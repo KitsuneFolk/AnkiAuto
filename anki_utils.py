@@ -38,48 +38,59 @@ def ensure_deck_exists(deck_name):
 
 def add_card(target_deck_name, model_name, front, back, tags_list):
     """
-    Adds a single card to the specified Anki deck.
-    Returns: "added", "skipped", or "failed"
+    Adds a single card.
+    Returns: ('status', note_id_or_none)
+    e.g., ("added", 12345), ("skipped", 54321), ("failed", None)
     """
-    note = {
-        "deckName": target_deck_name,
-        "modelName": model_name,
-        "fields": {
-            "Front": front,
-            "Back": back
-        },
-        "options": {
-            "allowDuplicate": False,
-            "duplicateScope": "deck",
-            "duplicateScopeOptions": {
-                "deckName": target_deck_name,
-                "checkChildren": False,
-                "checkAllModels": False
-            }
-        },
-        "tags": tags_list
-    }
-
-    # Check for duplicates by Front field within the target deck
+    # ... (This function is updated to return the noteId on skip) ...
     query = f'"deck:{target_deck_name}" "Front:{front}"'
     find_response = anki_request('findNotes', query=query)
 
     if find_response is None:
-        return "failed"
+        return "failed", None
 
+    # If a duplicate is found by the Front field
     if find_response.get('result'):
-        print(f"  > Skipping (already exists in '{target_deck_name}' based on Front field): {front}")
-        return "skipped"
+        note_id = find_response.get('result')[0]
+        print(f"  > Skipping (already exists): {front} (Note ID: {note_id})")
+        return "skipped", note_id
+
+    note = {
+        "deckName": target_deck_name,
+        "modelName": model_name,
+        "fields": {"Front": front, "Back": back},
+        "options": {"allowDuplicate": False, "duplicateScope": "deck"},
+        "tags": tags_list
+    }
 
     add_response = anki_request('addNote', note=note)
-    if add_response and add_response.get('error') is None and add_response.get('result') is not None:
-        tags_display = f" (Tags: {', '.join(tags_list)})" if tags_list else ""
-        print(f"  + Added to '{target_deck_name}': {front} -> {back}{tags_display}")
-        return "added"
+    if add_response and add_response.get('result'):
+        note_id = add_response.get('result')
+        print(f"  + Added: {front} -> {back} (Note ID: {note_id})")
+        return "added", note_id
     else:
-        error = add_response.get('error') if add_response else "Unknown error"
-        if "cannot create note because it is a duplicate" in str(error).lower():
-            print(f"  > Skipping (reported as duplicate by Anki in '{target_deck_name}'): {front}")
-            return "skipped"
-        print(f"  x Failed to add '{front}' to '{target_deck_name}': {error}")
-        return "failed"
+        error = add_response.get('error', "Unknown error")
+        print(f"  x Failed to add '{front}': {error}")
+        return "failed", None
+
+# --- NEW FUNCTIONS FOR GUI INTERACTION ---
+
+def get_note_info(note_id):
+    """Retrieves all info for a given note ID."""
+    return anki_request("notesInfo", notes=[note_id])
+
+
+def update_note_fields(note_id, fields_to_update):
+    """Updates one or more fields of an existing note."""
+    note = {"id": note_id, "fields": fields_to_update}
+    return anki_request("updateNoteFields", note=note)
+
+
+def reset_cards(note_ids):
+    """Resets (forgets) one or more cards, making them new again."""
+    return anki_request("relearnNotes", notes=note_ids)
+
+
+def open_editor_for_note(note_id):
+    """Opens the Anki Edit window for a specific note."""
+    return anki_request("guiEditNote", note=note_id)
