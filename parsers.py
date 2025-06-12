@@ -45,16 +45,14 @@ def parse_active_line(line):
         return None, None, None
 
     # Pattern 1: (English) Japanese
-    # The second group (.+) will now match any characters, including '、'
-    match_phrase_then_jp = re.match(r'^(\(.+?\))\s*(.+)$', line)
+    match_phrase_then_jp = re.match(r'^(\(.+\))\s*(.+)$', line)
     if match_phrase_then_jp:
         front = match_phrase_then_jp.group(1).strip()
         back = match_phrase_then_jp.group(2).strip()
         return front, back, None
 
     # Pattern 2: Japanese (English)
-    # The first group (.+) is also made more general for consistency.
-    match_jp_then_phrase = re.match(r'^(.+?)\s*(\(.+?\))$', line)
+    match_jp_then_phrase = re.match(r'^(.+?)\s*(\(.+\))$', line)
     if match_jp_then_phrase:
         # The order is swapped to keep (English) as the front
         front = match_jp_then_phrase.group(2).strip()
