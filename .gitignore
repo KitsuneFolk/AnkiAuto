@@ -1,3 +1,5 @@
 .idea
-passive_cards.txt
-active_cards.txt
+.release_builds
+/build
+/release_builds
+AnkiAutoApp.spec
