@@ -87,9 +87,25 @@ def update_note_fields(note_id, fields_to_update):
 
 
 def reset_cards(note_ids):
-    """Resets (forgets) one or more cards, making them new again."""
-    return anki_request("relearnNotes", notes=note_ids)
+    """
+    Resets (forgets) one or more notes, making their cards new again.
+    This also ensures the cards are unsuspended so they can be studied.
+    """
+    if not note_ids:
+        return None
 
+    query = " or ".join(f"nid:{nid}" for nid in note_ids)
+    response = anki_request("findCards", query=query)
+
+    if not response or not response.get('result'):
+        print(f"Warning: No cards found for note IDs {note_ids} during reset.")
+        return None
+
+    card_ids = response['result']
+
+    anki_request("unsuspend", cards=card_ids)
+
+    return anki_request("forgetCards", cards=card_ids)
 
 def open_editor_for_note(note_id):
     """Opens the Anki Edit window for a specific note."""
