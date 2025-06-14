@@ -246,7 +246,7 @@ class ImportResultsWindow(Toplevel):
             threading.Thread(target=worker, daemon=True).start()
 
         def on_append():
-            updated_back = f"{card_data['back_old']}<hr>{card_data['back_new']}"
+            updated_back = f"{card_data['back_old']}<br>{card_data['back_new']}"
             anki_utils.update_note_fields(card_data['note_id'], {"Back": updated_back})
             anki_utils.reset_cards([card_data['note_id']])
 
