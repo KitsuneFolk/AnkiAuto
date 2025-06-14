@@ -48,6 +48,14 @@ class TestParsePassiveLine(unittest.TestCase):
         self.assertEqual(back, "a computer")
         self.assertIsNone(tag)
 
+    def test_vocab_card_with_kanji(self):
+        """Tests that the vocab parser handles words with kanji."""
+        line = "童謡children's song"
+        front, back, tag = parse_passive_line(line)
+        self.assertEqual(front, "童謡")
+        self.assertEqual(back, "children's song")
+        self.assertIsNone(tag)
+
     def test_vocab_card_with_extra_whitespace(self):
         """Tests a vocab card with extra whitespace."""
         line = "  ばらまき   spending (money) recklessly  "
