@@ -92,6 +92,8 @@ class AnkiImporterApp:
 
         counts = {"added": 0, "skipped": 0, "failed": 0, "unparsable": 0}
         skipped_cards = []
+        failed_cards = []
+        unparsable_lines = []
         total = len(lines)
 
         for line in lines:
@@ -104,18 +106,29 @@ class AnkiImporterApp:
                 if status == "skipped":
                     card_data = {"front": front, "back_new": back, 'note_id': note_id}
                     skipped_cards.append(card_data)
+                elif status == "failed":
+                    failed_cards.append({"front": front, "back": back, "line": line.strip()})
             else:
                 counts["unparsable"] += 1
+                unparsable_lines.append(line)
 
             q.put({"type": "progress", "counts": counts, "total": total})
 
         # Fetch detailed info for skipped cards after the main loop
-        for card in skipped_cards:
-            info = anki_utils.get_note_info(card['note_id'])
-            card['back_old'] = info['result'][0]['fields']['Back']['value'] if info and info.get(
-                'result') else "[Not Found]"
+        if skipped_cards:
+            for card in skipped_cards:
+                info = anki_utils.get_note_info(card['note_id'])
+                card['back_old'] = info['result'][0]['fields']['Back']['value'] if info and info.get(
+                    'result') else "[Not Found]"
 
-        q.put({"type": "complete", "deck_name": deck_name, "counts": counts, "skipped_cards": skipped_cards})
+        q.put({
+            "type": "complete",
+            "deck_name": deck_name,
+            "counts": counts,
+            "skipped_cards": skipped_cards,
+            "failed_cards": failed_cards,
+            "unparsable_lines": unparsable_lines
+        })
 
     def check_import_queue(self, pane):
         try:
@@ -123,13 +136,16 @@ class AnkiImporterApp:
             if msg["type"] == "progress":
                 counts = msg["counts"]
                 pane.progress_label.config(
-                    text=f"A:{counts['added']} S:{counts['skipped']} F:{counts['failed']} / T:{msg['total']}")
+                    text=f"A:{counts['added']} S:{counts['skipped']} F:{counts['failed']} U:{counts['unparsable']} / T:{msg['total']}")
                 self.root.after(100, self.check_import_queue, pane)
             elif msg["type"] == "complete":
                 pane.start_button.config(state=tk.NORMAL)
                 pane.progress_label.config(text="")  # Clear progress
-                if msg["skipped_cards"]:
-                    SkippedCardsWindow(self.root, msg)
+
+                # Check if there's anything to report in the detailed window
+                has_issues = msg["skipped_cards"] or msg.get("failed_cards") or msg.get("unparsable_lines")
+                if has_issues:
+                    ImportResultsWindow(self.root, msg)
                 else:
                     summary = f"Import for '{msg['deck_name']}' complete!\n\n" + "\n".join(
                         [f"{k.capitalize()}: {v}" for k, v in msg['counts'].items()])
@@ -141,32 +157,62 @@ class AnkiImporterApp:
             self.root.after(100, self.check_import_queue, pane)
 
 
-class SkippedCardsWindow(Toplevel):
+class ImportResultsWindow(Toplevel):
     def __init__(self, parent, results):
         super().__init__(parent)
-        self.title(f"Handle Duplicates in '{results['deck_name']}'")
+        self.title(f"Import Results for '{results['deck_name']}'")
         self.transient(parent)
         self.grab_set()
+        self.geometry("800x600")
+
+        # Main frame and summary
+        main_frame = ttk.Frame(self, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
         counts = results['counts']
         summary_text = (f"Import Summary:\n" + "\n".join([f"  - {k.capitalize()}: {v}" for k, v in counts.items()]))
-        ttk.Label(self, text=summary_text, padding=10).pack(anchor='w')
-        ttk.Separator(self, orient='horizontal').pack(fill='x', pady=5)
+        ttk.Label(main_frame, text=summary_text, justify=tk.LEFT).pack(anchor='w')
+        ttk.Separator(main_frame, orient='horizontal').pack(fill='x', pady=10)
 
-        # Canvas and Scrollbar for list of cards
-        canvas = tk.Canvas(self, borderwidth=0)
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        # Canvas and Scrollbar for list of issues
+        canvas = tk.Canvas(main_frame, borderwidth=0)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
         scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+        canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        for card in results['skipped_cards']:
-            self.create_card_frame(scrollable_frame, card)
+        # Section for Skipped Cards (if any)
+        if results.get('skipped_cards'):
+            skipped_frame = ttk.LabelFrame(scrollable_frame, text="Skipped Cards (Duplicates)", padding=10)
+            skipped_frame.pack(fill=tk.X, expand=True, padx=5, pady=5)
+            for card in results['skipped_cards']:
+                self.create_skipped_card_frame(skipped_frame, card)
 
-    def create_card_frame(self, parent, card_data):
+        # Section for Failed Cards (if any)
+        if results.get('failed_cards'):
+            self.create_simple_list_frame(scrollable_frame, "Failed to Add to Anki", results['failed_cards'],
+                                          lambda card: f"Line: {card['line']}")
+
+        # Section for Unparsable Lines (if any)
+        if results.get('unparsable_lines'):
+            self.create_simple_list_frame(scrollable_frame, "Unparsable Lines", results['unparsable_lines'],
+                                          lambda line: f"Line: {line.strip()}")
+
+    def create_simple_list_frame(self, parent, title, items, formatter):
+        """Creates a frame with a read-only text box for listing items."""
+        frame = ttk.LabelFrame(parent, text=title, padding=10)
+        frame.pack(fill=tk.X, expand=True, padx=5, pady=5)
+
+        text_content = "\n".join(formatter(item) for item in items)
+        text_widget = Text(frame, wrap=tk.WORD, height=min(len(items), 6), bg=self.cget('bg'), relief=tk.FLAT)
+        text_widget.insert("1.0", text_content)
+        text_widget.config(state=tk.DISABLED)
+        text_widget.pack(fill=tk.X, expand=True)
+
+    def create_skipped_card_frame(self, parent, card_data):
         card_frame = ttk.LabelFrame(parent, text=f"Card: {card_data['front']}", padding=10)
         card_frame.pack(fill=tk.X, padx=5, pady=5, expand=True)
 
@@ -191,12 +237,10 @@ class SkippedCardsWindow(Toplevel):
         buttons = []
 
         def run_task_in_thread(target_func, *args):
-            # Disable all buttons in this frame during operation
             for btn in buttons: btn.config(state=tk.DISABLED)
 
             def worker():
                 target_func(*args)
-                # Safely destroy the frame from the main thread
                 card_frame.after(0, card_frame.destroy)
 
             threading.Thread(target=worker, daemon=True).start()
