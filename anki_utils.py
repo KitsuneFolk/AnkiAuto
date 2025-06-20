@@ -34,41 +34,46 @@ def ensure_deck_exists(deck_name):
     return True
 
 
-def add_card(target_deck_name, model_name, front, back, tags_list):
+def get_info_for_existing_notes(deck_name, front_texts):
     """
-    Adds a single card.
-    Returns: ('status', note_id_or_none)
-    e.g., ("added", 12345), ("skipped", 54321), ("failed", None)
+    Finds all existing notes in a deck that match a list of front fields.
+    Returns a dictionary mapping front_text -> note_info for fast lookups.
     """
-    query = f'"deck:{target_deck_name}" "Front:{front}"'
-    find_response = anki_request('findNotes', query=query)
+    if not front_texts:
+        return {}
 
-    if find_response is None:
-        return "failed", None
+    # Escape quotes in front text for the query
+    escaped_fronts = [f.replace('"', '\\"') for f in front_texts]
+    query = f'"deck:{deck_name}" ("Front:{escaped_fronts[0]}"'
+    for f in escaped_fronts[1:]:
+        query += f' or "Front:{f}"'
+    query += ')'
 
-    # If a duplicate is found by the Front field
-    if find_response.get('result'):
-        note_id = find_response.get('result')[0]
-        print(f"  > Skipping (already exists): {front} (Note ID: {note_id})")
-        return "skipped", note_id
+    find_response = anki_request("findNotes", query=query)
+    if not find_response or not find_response.get("result"):
+        return {}
 
-    note = {
-        "deckName": target_deck_name,
-        "modelName": model_name,
-        "fields": {"Front": front, "Back": back},
-        "options": {"allowDuplicate": False, "duplicateScope": "deck"},
-        "tags": tags_list
+    existing_note_ids = find_response["result"]
+    info_response = anki_request("notesInfo", notes=existing_note_ids)
+
+    if not info_response or not info_response.get("result"):
+        return {}
+
+    # Create a lookup map: {front_text: note_info}
+    return {
+        info['fields']['Front']['value']: info
+        for info in info_response['result']
     }
 
-    add_response = anki_request('addNote', note=note)
-    if add_response and add_response.get('result'):
-        note_id = add_response.get('result')
-        print(f"  + Added: {front} -> {back} (Note ID: {note_id})")
-        return "added", note_id
-    else:
-        error = add_response.get('error', "Unknown error")
-        print(f"  x Failed to add '{front}': {error}")
-        return "failed", None
+
+def add_notes_bulk(notes_to_add):
+    """
+    Adds a list of notes in a single batch request.
+    Returns the result from the 'addNotes' action.
+    """
+    if not notes_to_add:
+        return None
+    return anki_request("addNotes", notes=notes_to_add)
 
 
 def get_note_info(note_id):

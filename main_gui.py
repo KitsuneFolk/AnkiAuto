@@ -86,48 +86,94 @@ class AnkiImporterApp:
             daemon=True
         )
         thread.start()
+        # The single process_import_queue loop will handle the results.
 
     def _import_worker(self, deck_config, lines, q):
         deck_name = deck_config["deck_name"]
         parser_func = getattr(parsers, deck_config["parser_func_name"])
         tag_func = deck_config["tag_generation_func"]
 
+        q.put({"type": "progress_text", "deck_name": deck_name, "text": "Checking deck..."})
         if not anki_utils.ensure_deck_exists(deck_name):
-            # Include deck_name in message to identify the source pane.
             q.put({"type": "error", "deck_name": deck_name, "message": f"Could not create/find deck: {deck_name}"})
             return
 
-        counts = {"added": 0, "skipped": 0, "failed": 0, "unparsable": 0}
-        skipped_cards = []
-        failed_cards = []
+        # --- Stage 1: Parse all lines ---
+        q.put({"type": "progress_text", "deck_name": deck_name, "text": f"Parsing {len(lines)} lines..."})
+        parsed_cards = []
         unparsable_lines = []
-        total = len(lines)
-
         for line in lines:
             front, back, tag_suffix = parser_func(line)
             if front and back:
-                tags = tag_func(tag_suffix)
-                status, note_id = anki_utils.add_card(deck_name, config.MODEL_NAME, front, back, tags)
-
-                counts[status] += 1
-                if status == "skipped":
-                    card_data = {"front": front, "back_new": back, 'note_id': note_id}
-                    skipped_cards.append(card_data)
-                elif status == "failed":
-                    failed_cards.append({"front": front, "back": back, "line": line.strip()})
+                parsed_cards.append({
+                    "front": front, "back": back, "tags": tag_func(tag_suffix), "line": line.strip()
+                })
             else:
-                counts["unparsable"] += 1
                 unparsable_lines.append(line)
 
-            # Include deck_name in message to identify the source pane.
-            q.put({"type": "progress", "deck_name": deck_name, "counts": counts, "total": total})
+        # --- Stage 2: Bulk duplicate check ---
+        q.put({"type": "progress_text", "deck_name": deck_name,
+               "text": f"Checking {len(parsed_cards)} for duplicates..."})
+        all_fronts = [card["front"] for card in parsed_cards]
+        existing_notes_map = anki_utils.get_info_for_existing_notes(deck_name, all_fronts)
 
-        # Fetch detailed info for skipped cards after the main loop
-        if skipped_cards:
-            for card in skipped_cards:
-                info = anki_utils.get_note_info(card['note_id'])
-                card['back_old'] = info['result'][0]['fields']['Back']['value'] if info and info.get(
-                    'result') else "[Not Found]"
+        # --- Stage 3: Sort into new, skipped, and failed lists ---
+        notes_to_add = []
+        skipped_cards = []
+        for card in parsed_cards:
+            if card["front"] in existing_notes_map:
+                # This card is a duplicate
+                existing_info = existing_notes_map[card["front"]]
+                card_data = {
+                    "front": card["front"],
+                    "back_new": card["back"],
+                    "note_id": existing_info["noteId"],
+                    "back_old": existing_info["fields"]["Back"]["value"]
+                }
+                skipped_cards.append(card_data)
+            else:
+                # This is a new card, prepare it for bulk adding
+                note = {
+                    "deckName": deck_name,
+                    "modelName": config.MODEL_NAME,
+                    "fields": {"Front": card["front"], "Back": card["back"]},
+                    "options": {"allowDuplicate": False, "duplicateScope": "deck"},
+                    "tags": card["tags"]
+                }
+                notes_to_add.append(note)
+
+        # --- Stage 4: Bulk add new cards ---
+        q.put({"type": "progress_text", "deck_name": deck_name, "text": f"Adding {len(notes_to_add)} new cards..."})
+        add_results = anki_utils.add_notes_bulk(notes_to_add)
+
+        # --- Stage 5: Collate final results ---
+        counts = {
+            "added": 0,
+            "skipped": len(skipped_cards),
+            "failed": 0,
+            "unparsable": len(unparsable_lines)
+        }
+        failed_cards = []
+
+        if add_results and add_results.get("result"):
+            for i, result_id in enumerate(add_results["result"]):
+                if result_id:
+                    counts["added"] += 1
+                else:
+                    # An error occurred, find original card data to report it
+                    original_card = next(
+                        c for c in parsed_cards if c["front"] == notes_to_add[i]["fields"]["Front"]
+                    )
+                    failed_cards.append({
+                        "front": original_card["front"],
+                        "back": original_card["back"],
+                        "line": original_card["line"]
+                    })
+                    counts["failed"] += 1
+        elif notes_to_add:
+            counts["failed"] = len(notes_to_add)  # The whole request failed
+            failed_cards = [{"front": n["fields"]["Front"], "back": n["fields"]["Back"], "line": ""} for n in
+                            notes_to_add]
 
         q.put({
             "type": "complete",
@@ -153,10 +199,8 @@ class AnkiImporterApp:
 
             pane = self.panes_by_deck_name[deck_name]
 
-            if msg["type"] == "progress":
-                counts = msg["counts"]
-                pane.progress_label.config(
-                    text=f"A:{counts['added']} S:{counts['skipped']} F:{counts['failed']} U:{counts['unparsable']} / T:{msg['total']}")
+            if msg["type"] == "progress_text":
+                pane.progress_label.config(text=msg["text"])
             elif msg["type"] == "complete":
                 pane.start_button.config(state=tk.NORMAL)
                 pane.progress_label.config(text="")  # Clear progress
