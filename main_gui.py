@@ -17,13 +17,20 @@ class AnkiImporterApp:
         main_frame = ttk.Frame(root, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
 
+        # A dictionary to map deck names to their UI panes, allowing for concurrent updates.
+        self.panes_by_deck_name = {}
+
         self.passive_pane = self.create_input_pane(main_frame, "Passive Cards", self.start_passive_import)
         self.passive_pane.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        self.panes_by_deck_name[config.PASSIVE_DECK_NAME] = self.passive_pane
 
         self.active_pane = self.create_input_pane(main_frame, "Active Cards", self.start_active_import)
         self.active_pane.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        self.panes_by_deck_name[config.ACTIVE_DECK_NAME] = self.active_pane
 
         self.import_queue = queue.Queue()
+        # Start the single, persistent queue checker that handles all updates.
+        self.process_import_queue()
 
     def create_input_pane(self, parent, title, start_command):
         pane = ttk.LabelFrame(parent, text=title, padding="10")
@@ -79,7 +86,6 @@ class AnkiImporterApp:
             daemon=True
         )
         thread.start()
-        self.check_import_queue(pane)
 
     def _import_worker(self, deck_config, lines, q):
         deck_name = deck_config["deck_name"]
@@ -87,7 +93,8 @@ class AnkiImporterApp:
         tag_func = deck_config["tag_generation_func"]
 
         if not anki_utils.ensure_deck_exists(deck_name):
-            q.put({"type": "error", "message": f"Could not create/find deck: {deck_name}"})
+            # Include deck_name in message to identify the source pane.
+            q.put({"type": "error", "deck_name": deck_name, "message": f"Could not create/find deck: {deck_name}"})
             return
 
         counts = {"added": 0, "skipped": 0, "failed": 0, "unparsable": 0}
@@ -112,7 +119,8 @@ class AnkiImporterApp:
                 counts["unparsable"] += 1
                 unparsable_lines.append(line)
 
-            q.put({"type": "progress", "counts": counts, "total": total})
+            # Include deck_name in message to identify the source pane.
+            q.put({"type": "progress", "deck_name": deck_name, "counts": counts, "total": total})
 
         # Fetch detailed info for skipped cards after the main loop
         if skipped_cards:
@@ -130,19 +138,29 @@ class AnkiImporterApp:
             "unparsable_lines": unparsable_lines
         })
 
-    def check_import_queue(self, pane):
+    def process_import_queue(self):
+        """
+        Processes messages from all import threads. This single, persistent loop
+        replaces the old method and allows for concurrent UI updates.
+        """
         try:
             msg = self.import_queue.get(block=False)
+
+            deck_name = msg.get("deck_name")
+            if not deck_name or deck_name not in self.panes_by_deck_name:
+                print(f"Queue message has invalid/missing deck_name: {msg}")
+                return
+
+            pane = self.panes_by_deck_name[deck_name]
+
             if msg["type"] == "progress":
                 counts = msg["counts"]
                 pane.progress_label.config(
                     text=f"A:{counts['added']} S:{counts['skipped']} F:{counts['failed']} U:{counts['unparsable']} / T:{msg['total']}")
-                self.root.after(100, self.check_import_queue, pane)
             elif msg["type"] == "complete":
                 pane.start_button.config(state=tk.NORMAL)
                 pane.progress_label.config(text="")  # Clear progress
 
-                # Check if there's anything to report in the detailed window
                 has_issues = msg["skipped_cards"] or msg.get("failed_cards") or msg.get("unparsable_lines")
                 if has_issues:
                     ImportResultsWindow(self.root, msg)
@@ -153,8 +171,12 @@ class AnkiImporterApp:
             elif msg["type"] == "error":
                 messagebox.showerror("Error", msg["message"])
                 pane.start_button.config(state=tk.NORMAL)
+                pane.progress_label.config(text="")
         except queue.Empty:
-            self.root.after(100, self.check_import_queue, pane)
+            pass  # No message, do nothing.
+        finally:
+            # Always reschedule the check to keep the loop running.
+            self.root.after(100, self.process_import_queue)
 
 
 class ImportResultsWindow(Toplevel):
