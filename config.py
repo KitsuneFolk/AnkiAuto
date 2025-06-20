@@ -1,5 +1,3 @@
-# config.py
-
 # --- AnkiConnect General Configuration ---
 ANKI_CONNECT_URL = "http://localhost:8765"
 MODEL_NAME = "Basic"

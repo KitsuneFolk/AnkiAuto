@@ -1,9 +1,7 @@
-# anki_utils.py
 import json
 import urllib.error
 import urllib.request
 
-# Import common configuration
 import config
 
 
@@ -42,7 +40,6 @@ def add_card(target_deck_name, model_name, front, back, tags_list):
     Returns: ('status', note_id_or_none)
     e.g., ("added", 12345), ("skipped", 54321), ("failed", None)
     """
-    # ... (This function is updated to return the noteId on skip) ...
     query = f'"deck:{target_deck_name}" "Front:{front}"'
     find_response = anki_request('findNotes', query=query)
 
@@ -73,7 +70,6 @@ def add_card(target_deck_name, model_name, front, back, tags_list):
         print(f"  x Failed to add '{front}': {error}")
         return "failed", None
 
-# --- NEW FUNCTIONS FOR GUI INTERACTION ---
 
 def get_note_info(note_id):
     """Retrieves all info for a given note ID."""
@@ -106,6 +102,7 @@ def reset_cards(note_ids):
     anki_request("unsuspend", cards=card_ids)
 
     return anki_request("forgetCards", cards=card_ids)
+
 
 def open_editor_for_note(note_id):
     """Opens the Anki Edit window for a specific note."""

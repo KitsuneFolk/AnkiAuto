@@ -1,32 +1,19 @@
-import subprocess
 import os
 import shutil
+import subprocess
 import sys
 
 SOURCE_DIR = os.getcwd()
 
-# 2. The main Python script that your application starts with.
-#    This script should import all other necessary modules from SOURCE_DIR.
 MAIN_SCRIPT_NAME = "main_gui.py"
 
-EXE_NAME = "AnkiAutoApp"
+EXE_NAME = "AnkiAuto"
 
 OUTPUT_FINAL_DIR = "release_builds"
 
-# --- PyInstaller Options ---
 ONEFILE = True
 WINDOWED = True
 ICON_PATH = "icon.ico"
-
-# List of additional data files or directories to include in the executable.
-# IMPORTANT: When adding data files, ensure their source path is also absolute or correctly relative
-# to where PyInstaller runs. Using os.path.join(SOURCE_DIR, ...) is best.
-ADD_DATA_PATHS = [
-    # Example if you have a 'data' folder inside 'AnkiAuto':
-    # (os.path.join(SOURCE_DIR, "data", "config.json"), "data"),
-    # Example if you have an 'images' folder inside 'AnkiAuto':
-    # (os.path.join(SOURCE_DIR, "images"), "images"),
-]
 
 
 def clean_previous_builds():
@@ -106,13 +93,6 @@ def build_executable():
             print(f"Using icon: {ICON_PATH}")
         else:
             print(f"Warning: Icon file '{ICON_PATH}' not found. Skipping icon setting.")
-
-    for source, dest in ADD_DATA_PATHS:
-        if os.path.exists(source):
-            command.extend(["--add-data", f"{source}{os.pathsep}{dest}"])
-            print(f"Adding data: {source} -> {dest}")
-        else:
-            print(f"Warning: Data path '{source}' not found. Skipping this add-data entry.")
 
     print(f"\nExecuting PyInstaller command:\n{' '.join(command)}\n")
 

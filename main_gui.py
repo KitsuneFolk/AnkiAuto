@@ -1,10 +1,10 @@
-# main_gui.py
-import tkinter as tk
-from tkinter import ttk, messagebox, Toplevel, Frame, Label, Button, Text
-import threading
 import queue
-import config
+import threading
+import tkinter as tk
+from tkinter import ttk, messagebox, Toplevel, Button, Text
+
 import anki_utils
+import config
 import parsers
 
 
