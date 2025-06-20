@@ -1,8 +1,12 @@
 import json
+import logging
 import urllib.error
 import urllib.request
 
 import config
+
+# Get a logger for this module
+logger = logging.getLogger(__name__)
 
 
 def anki_request(action, **params):
@@ -14,8 +18,9 @@ def anki_request(action, **params):
         )
         return json.load(response)
     except urllib.error.URLError as e:
-        print(f"Error connecting to AnkiConnect: {e}")
-        print("Please ensure Anki is running and AnkiConnect is installed.")
+        # Changed from print to logging.error
+        logger.error(f"Error connecting to AnkiConnect: {e}")
+        logger.error("Please ensure Anki is running and AnkiConnect is installed.")
         return None
 
 
@@ -26,10 +31,10 @@ def ensure_deck_exists(deck_name):
         return False  # Cannot connect or get deck names
 
     if deck_name not in deck_names_response.get('result', []):
-        print(f"Deck '{deck_name}' not found. Creating it...")
+        logger.info(f"Deck '{deck_name}' not found. Creating it...")
         create_response = anki_request('createDeck', deck=deck_name)
         if create_response is None or create_response.get('error'):
-            print(f"Could not create deck '{deck_name}'. Please create it manually in Anki.")
+            logger.error(f"Could not create deck '{deck_name}'. Please create it manually in Anki.")
             return False
     return True
 
@@ -99,7 +104,7 @@ def reset_cards(note_ids):
     response = anki_request("findCards", query=query)
 
     if not response or not response.get('result'):
-        print(f"Warning: No cards found for note IDs {note_ids} during reset.")
+        logger.warning(f"No cards found for note IDs {note_ids} during reset.")
         return None
 
     card_ids = response['result']

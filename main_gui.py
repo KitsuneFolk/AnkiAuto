@@ -120,21 +120,39 @@ class AnkiImporterApp:
 
             notes_to_add = []
             skipped_cards = []
+            # Use a set to track fronts for this batch to prevent intra-batch duplicates
+            fronts_for_bulk_add = set()
+
             for card in parsed_cards:
-                if card["front"] in existing_notes_map:
-                    existing_info = existing_notes_map[card["front"]]
+                front = card["front"]
+                # Case 1: Card already exists in Anki
+                if front in existing_notes_map:
+                    existing_info = existing_notes_map[front]
                     card_data = {
-                        "front": card["front"], "back_new": card["back"],
+                        "front": front, "back_new": card["back"],
                         "note_id": existing_info["noteId"], "back_old": existing_info["fields"]["Back"]["value"]
                     }
                     skipped_cards.append(card_data)
-                else:
-                    note = {
-                        "deckName": deck_name, "modelName": config.MODEL_NAME,
-                        "fields": {"Front": card["front"], "Back": card["back"]},
-                        "options": {"allowDuplicate": False, "duplicateScope": "deck"}, "tags": card["tags"]
+                    continue
+
+                # Case 2: Card is a duplicate within the input itself
+                if front in fronts_for_bulk_add:
+                    logger.info(f"Skipping card '{front}' as it is a duplicate within the input batch.")
+                    card_data = {
+                        "front": front, "back_new": card["back"],
+                        "note_id": None, "back_old": "[Duplicate in this import session]"
                     }
-                    notes_to_add.append(note)
+                    skipped_cards.append(card_data)
+                    continue
+
+                # Case 3: This is a new, unique card to be added
+                fronts_for_bulk_add.add(front)
+                note = {
+                    "deckName": deck_name, "modelName": config.MODEL_NAME,
+                    "fields": {"Front": front, "Back": card["back"]},
+                    "options": {"allowDuplicate": False}, "tags": card["tags"]
+                }
+                notes_to_add.append(note)
 
             q.put({"type": "progress_text", "deck_name": deck_name, "text": f"Adding {len(notes_to_add)} new cards..."})
             add_results = anki_utils.add_notes_bulk(notes_to_add)
@@ -142,16 +160,23 @@ class AnkiImporterApp:
             counts = {"added": 0, "skipped": len(skipped_cards), "failed": 0, "unparsable": len(unparsable_lines)}
             failed_cards = []
             if add_results and add_results.get("result"):
-                for i, result_id in enumerate(add_results["result"]):
-                    if result_id:
-                        counts["added"] += 1
-                    else:
-                        original_card = next(
-                            c for c in parsed_cards if c["front"] == notes_to_add[i]["fields"]["Front"])
-                        failed_cards.append({"front": original_card["front"], "back": original_card["back"],
-                                             "line": original_card["line"]})
-                        counts["failed"] += 1
-            elif notes_to_add:
+                results_list = add_results["result"]
+                counts["added"] = sum(1 for r in results_list if r is not None)
+                # This should ideally not happen now, but we keep the logic as a safeguard
+                if None in results_list:
+                    for i, result_id in enumerate(results_list):
+                        if result_id is None:
+                            counts["failed"] += 1
+                            failed_note_data = notes_to_add[i]
+                            logger.warning(
+                                f"A single card failed to add inside a batch. Front: '{failed_note_data['fields']['Front']}'")
+                            failed_cards.append({"front": failed_note_data['fields']['Front'],
+                                                 "back": failed_note_data['fields']['Back'], "line": "N/A"})
+
+            elif notes_to_add and not (add_results and add_results.get("result")):
+                anki_error = add_results.get('error',
+                                             'Response was empty or malformed.') if add_results else "Connection to Anki failed."
+                logger.error(f"The entire bulk 'addNotes' request failed. AnkiConnect error: {anki_error}")
                 counts["failed"] = len(notes_to_add)
                 failed_cards = [{"front": n["fields"]["Front"], "back": n["fields"]["Back"], "line": ""} for n in
                                 notes_to_add]
@@ -170,12 +195,11 @@ class AnkiImporterApp:
         try:
             msg = self.import_queue.get(block=False)
 
-            # Handle messages that don't have a deck_name (like destroy_widget)
             if msg["type"] == "destroy_widget":
                 widget = msg.get("widget")
                 if widget and widget.winfo_exists():
                     widget.destroy()
-                return  # Stop processing this message here
+                return
 
             deck_name = msg.get("deck_name")
             if not deck_name or deck_name not in self.panes_by_deck_name:
@@ -193,7 +217,6 @@ class AnkiImporterApp:
 
                 has_issues = msg["skipped_cards"] or msg.get("failed_cards") or msg.get("unparsable_lines")
                 if has_issues:
-                    # Pass the queue to the results window
                     ImportResultsWindow(self.root, msg, self.import_queue)
                 else:
                     summary = f"Import for '{msg['deck_name']}' complete!\n\n" + "\n".join(
@@ -213,7 +236,7 @@ class AnkiImporterApp:
 class ImportResultsWindow(Toplevel):
     def __init__(self, parent, results, action_queue):
         super().__init__(parent)
-        self.action_queue = action_queue  # Store the queue for later use
+        self.action_queue = action_queue
         self.title(f"Import Results for '{results['deck_name']}'")
         self.transient(parent)
         self.grab_set()
@@ -244,7 +267,7 @@ class ImportResultsWindow(Toplevel):
 
         if results.get('failed_cards'):
             self.create_simple_list_frame(scrollable_frame, "Failed to Add to Anki", results['failed_cards'],
-                                          lambda card: f"Line: {card['line']}")
+                                          lambda card: f"Line: {card.get('line', card.get('front'))}")
 
         if results.get('unparsable_lines'):
             self.create_simple_list_frame(scrollable_frame, "Unparsable Lines", results['unparsable_lines'],
@@ -265,7 +288,7 @@ class ImportResultsWindow(Toplevel):
 
         content_frame = ttk.Frame(card_frame)
         content_frame.pack(fill=tk.X, expand=True, pady=5)
-        ttk.Label(content_frame, text="Current Back in Anki:", font=("", 9, "bold")).grid(row=0, column=0, sticky='nw')
+        ttk.Label(content_frame, text="Reason / Current Back:", font=("", 9, "bold")).grid(row=0, column=0, sticky='nw')
         ttk.Label(content_frame, text=card_data['back_old'], wraplength=350, justify=tk.LEFT).grid(row=1, column=0,
                                                                                                    sticky='w',
                                                                                                    pady=(0, 10))
@@ -277,44 +300,44 @@ class ImportResultsWindow(Toplevel):
         content_frame.grid_columnconfigure(0, weight=1)
         content_frame.grid_columnconfigure(1, weight=1)
 
-        action_frame = ttk.Frame(card_frame)
-        action_frame.pack(fill=tk.X)
-        buttons = []
+        # Only create action buttons if the note exists in Anki (has a note_id)
+        if card_data.get('note_id'):
+            action_frame = ttk.Frame(card_frame)
+            action_frame.pack(fill=tk.X)
+            buttons = []
 
-        def run_task_in_thread(target_func, *args):
-            for btn in buttons: btn.config(state=tk.DISABLED)
+            def run_task_in_thread(target_func, *args):
+                for btn in buttons: btn.config(state=tk.DISABLED)
 
-            def worker():
-                try:
-                    target_func(*args)
-                    # Instead of modifying the UI directly, send a message to the main thread.
-                    self.action_queue.put({"type": "destroy_widget", "widget": card_frame})
-                except Exception:
-                    logger.error("Exception in skipped card action thread", exc_info=True)
+                def worker():
+                    try:
+                        target_func(*args)
+                        self.action_queue.put({"type": "destroy_widget", "widget": card_frame})
+                    except Exception:
+                        logger.error("Exception in skipped card action thread", exc_info=True)
 
-            threading.Thread(target=worker, daemon=True).start()
+                threading.Thread(target=worker, daemon=True).start()
 
-        def on_append():
-            updated_back = f"{card_data['back_old']}<br>{card_data['back_new']}"
-            anki_utils.update_note_fields(card_data['note_id'], {"Back": updated_back})
-            anki_utils.reset_cards([card_data['note_id']])
+            def on_append():
+                updated_back = f"{card_data['back_old']}<br>{card_data['back_new']}"
+                anki_utils.update_note_fields(card_data['note_id'], {"Back": updated_back})
+                anki_utils.reset_cards([card_data['note_id']])
 
-        def on_reset():
-            anki_utils.reset_cards([card_data['note_id']])
+            def on_reset():
+                anki_utils.reset_cards([card_data['note_id']])
 
-        def on_modify():
-            anki_utils.open_editor_for_note(card_data['note_id'])
-            anki_utils.reset_cards([card_data['note_id']])
+            def on_modify():
+                anki_utils.open_editor_for_note(card_data['note_id'])
+                anki_utils.reset_cards([card_data['note_id']])
 
-        append_btn = Button(action_frame, text="Append & Reset", command=lambda: run_task_in_thread(on_append))
-        reset_btn = Button(action_frame, text="Just Reset", command=lambda: run_task_in_thread(on_reset))
-        modify_btn = Button(action_frame, text="Modify & Reset", command=lambda: run_task_in_thread(on_modify))
-        buttons.extend([append_btn, reset_btn, modify_btn])
-        for btn in buttons: btn.pack(side=tk.LEFT, padx=5)
+            append_btn = Button(action_frame, text="Append & Reset", command=lambda: run_task_in_thread(on_append))
+            reset_btn = Button(action_frame, text="Just Reset", command=lambda: run_task_in_thread(on_reset))
+            modify_btn = Button(action_frame, text="Modify & Reset", command=lambda: run_task_in_thread(on_modify))
+            buttons.extend([append_btn, reset_btn, modify_btn])
+            for btn in buttons: btn.pack(side=tk.LEFT, padx=5)
 
 
 if __name__ == "__main__":
-    # Set up logging as the very first thing
     logger_setup.setup_logging()
 
     try:
@@ -328,7 +351,6 @@ if __name__ == "__main__":
             app = AnkiImporterApp(root)
             root.mainloop()
     except Exception as e:
-        # The global exception hook will catch this, but we log it here for clarity
         logger.critical("A fatal error occurred during application initialization.", exc_info=True)
         messagebox.showerror("Fatal Error",
                              f"A fatal error occurred: {e}\n\nPlease check the logs.txt file for details.")
