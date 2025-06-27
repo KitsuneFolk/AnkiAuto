@@ -22,8 +22,8 @@ def parse_passive_line(line):
         back = match_kanji_format.group(2).strip()
         return front, back, config.PASSIVE_KANJI_TAG
 
-    # It takes the initial Japanese (kana and/or kanji) as the front and EVERYTHING else as the back.
-    match_vocab = re.match(r'^([\u3040-\u30FF\u4e00-\u9fff]+)(.+)$', line)
+    # It takes the initial Japanese (kana and/or kanji, including common punctuation) as the front and EVERYTHING else as the back.
+    match_vocab = re.match(r'^([\u3040-\u30FF\u4e00-\u9fff\u3002\u3001\u300C\u300D\u3005]+)(.+)$', line)
     if match_vocab:
         front = match_vocab.group(1).strip()
         back = match_vocab.group(2).strip()

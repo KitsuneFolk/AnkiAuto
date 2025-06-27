@@ -3,29 +3,38 @@ import shutil
 import subprocess
 import sys
 
-SOURCE_DIR = os.getcwd()
+# --- Project Structure Setup ---
+# Assumes this script is in the project root, alongside main_gui.py and icon.ico
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SOURCE_DIR = SCRIPT_DIR  # Project root where main_gui.py is located
 
 MAIN_SCRIPT_NAME = "main_gui.py"
-
 EXE_NAME = "AnkiAuto"
 
-OUTPUT_FINAL_DIR = "release_builds"
+# --- Output Directories (relative to SOURCE_DIR) ---
+DIST_DIR_NAME = "dist"
+BUILD_DIR_NAME = "build"
+FINAL_RELEASE_DIR_NAME = "release_builds"
 
+OUTPUT_DIST_PATH = os.path.join(SOURCE_DIR, DIST_DIR_NAME)
+OUTPUT_BUILD_PATH = os.path.join(SOURCE_DIR, BUILD_DIR_NAME)
+OUTPUT_FINAL_DIR_PATH = os.path.join(SOURCE_DIR, FINAL_RELEASE_DIR_NAME)
+
+# --- PyInstaller Options ---
 ONEFILE = True
 WINDOWED = True
-ICON_PATH = "icon.ico"
+ICON_NAME = "icon.ico"
+ICON_PATH = os.path.join(SOURCE_DIR, ICON_NAME)
 
 
 def clean_previous_builds():
     """Removes PyInstaller's temporary 'build' and 'dist' directories, and the .spec file."""
     print("--- Cleaning up previous build artifacts ---")
 
-    # PyInstaller's default output paths relative to the current working directory
-    pyinstaller_dist_dir = os.path.join(os.getcwd(), 'dist')
-    pyinstaller_build_dir = os.path.join(os.getcwd(), 'build')
-    spec_file = f"{EXE_NAME}.spec"
+    # Paths are now defined relative to SOURCE_DIR
+    spec_file_path = os.path.join(SOURCE_DIR, f"{EXE_NAME}.spec")
 
-    for path_to_remove in [pyinstaller_dist_dir, pyinstaller_build_dir, spec_file]:
+    for path_to_remove in [OUTPUT_DIST_PATH, OUTPUT_BUILD_PATH, spec_file_path]:
         if os.path.exists(path_to_remove):
             if os.path.isdir(path_to_remove):
                 shutil.rmtree(path_to_remove)
@@ -75,7 +84,10 @@ def build_executable():
 
     command = [
         "pyinstaller",
-        main_script_full_path
+        main_script_full_path,
+        "--distpath", OUTPUT_DIST_PATH,
+        "--workpath", OUTPUT_BUILD_PATH,
+        "--specpath", SOURCE_DIR,  # Place .spec file in the source directory
     ]
 
     if ONEFILE:
@@ -87,12 +99,13 @@ def build_executable():
     if EXE_NAME:
         command.extend(["--name", EXE_NAME])
 
-    if ICON_PATH:
-        if os.path.isfile(ICON_PATH):
-            command.extend(["--icon", ICON_PATH])
-            print(f"Using icon: {ICON_PATH}")
-        else:
-            print(f"Warning: Icon file '{ICON_PATH}' not found. Skipping icon setting.")
+    # ICON_PATH is now an absolute path
+    if os.path.isfile(ICON_PATH):
+        command.extend(["--icon", ICON_PATH])
+        print(f"Using icon: {ICON_PATH}")
+    else:
+        # ICON_NAME is the filename, ICON_PATH is the full expected path.
+        print(f"Warning: Icon file '{ICON_PATH}' (looking for '{ICON_NAME}') not found. Skipping icon setting.")
 
     print(f"\nExecuting PyInstaller command:\n{' '.join(command)}\n")
 
@@ -118,23 +131,22 @@ def move_final_executable():
     """Moves the built executable to the specified output directory."""
     print("\n--- Moving final executable ---")
 
-    pyinstaller_dist_dir = os.path.join(os.getcwd(), 'dist')
-
+    # PyInstaller's output is now directed to OUTPUT_DIST_PATH
     if sys.platform == "win32":
         final_exe_name = f"{EXE_NAME}.exe"
     else:
         final_exe_name = EXE_NAME
 
-    expected_exe_path = os.path.join(pyinstaller_dist_dir, final_exe_name)
+    expected_exe_path = os.path.join(OUTPUT_DIST_PATH, final_exe_name)
 
     if not os.path.exists(expected_exe_path):
         print(f"Error: Expected executable not found at '{expected_exe_path}'.")
         print("PyInstaller might have failed or created it with a different name/path.")
         sys.exit(1)
 
-    os.makedirs(OUTPUT_FINAL_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_FINAL_DIR_PATH, exist_ok=True) # Use new path variable
 
-    final_target_path = os.path.join(OUTPUT_FINAL_DIR, final_exe_name)
+    final_target_path = os.path.join(OUTPUT_FINAL_DIR_PATH, final_exe_name) # Use new path variable
 
     try:
         shutil.move(expected_exe_path, final_target_path)
@@ -151,4 +163,5 @@ if __name__ == "__main__":
     move_final_executable()
 
     print("\n--- Script finished successfully ---")
-    print(f"Your application is ready at: {os.path.abspath(OUTPUT_FINAL_DIR)}")
+    # OUTPUT_FINAL_DIR_PATH is already an absolute path if SOURCE_DIR is derived from abspath
+    print(f"Your application is ready at: {OUTPUT_FINAL_DIR_PATH}")

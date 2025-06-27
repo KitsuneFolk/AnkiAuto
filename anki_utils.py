@@ -18,7 +18,6 @@ def anki_request(action, **params):
         )
         return json.load(response)
     except urllib.error.URLError as e:
-        # Changed from print to logging.error
         logger.error(f"Error connecting to AnkiConnect: {e}")
         logger.error("Please ensure Anki is running and AnkiConnect is installed.")
         return None

@@ -119,6 +119,7 @@ class AnkiImporterApp:
             existing_notes_map = anki_utils.get_info_for_existing_notes(deck_name, all_fronts)
 
             notes_to_add = []
+            source_lines_for_notes_to_add = [] # Stores original lines for notes_to_add
             skipped_cards = []
             # Use a set to track fronts for this batch to prevent intra-batch duplicates
             fronts_for_bulk_add = set()
@@ -153,6 +154,7 @@ class AnkiImporterApp:
                     "options": {"allowDuplicate": False}, "tags": card["tags"]
                 }
                 notes_to_add.append(note)
+                source_lines_for_notes_to_add.append(card['line'])
 
             q.put({"type": "progress_text", "deck_name": deck_name, "text": f"Adding {len(notes_to_add)} new cards..."})
             add_results = anki_utils.add_notes_bulk(notes_to_add)
@@ -162,24 +164,29 @@ class AnkiImporterApp:
             if add_results and add_results.get("result"):
                 results_list = add_results["result"]
                 counts["added"] = sum(1 for r in results_list if r is not None)
-                # This should ideally not happen now, but we keep the logic as a safeguard
+                # AnkiConnect's addNotes can return None for individual notes in a batch if they
+                # fail to import (e.g., due to errors or if allowDuplicate=false and it's a
+                # duplicate within the batch). This logic handles such individual failures.
                 if None in results_list:
                     for i, result_id in enumerate(results_list):
                         if result_id is None:
                             counts["failed"] += 1
                             failed_note_data = notes_to_add[i]
+                            original_line = source_lines_for_notes_to_add[i]
                             logger.warning(
-                                f"A single card failed to add inside a batch. Front: '{failed_note_data['fields']['Front']}'")
+                                f"A single card failed to add inside a batch. Front: '{failed_note_data['fields']['Front']}'. Original line: '{original_line}'")
                             failed_cards.append({"front": failed_note_data['fields']['Front'],
-                                                 "back": failed_note_data['fields']['Back'], "line": "N/A"})
+                                                 "back": failed_note_data['fields']['Back'], "line": original_line})
 
             elif notes_to_add and not (add_results and add_results.get("result")):
                 anki_error = add_results.get('error',
                                              'Response was empty or malformed.') if add_results else "Connection to Anki failed."
                 logger.error(f"The entire bulk 'addNotes' request failed. AnkiConnect error: {anki_error}")
                 counts["failed"] = len(notes_to_add)
-                failed_cards = [{"front": n["fields"]["Front"], "back": n["fields"]["Back"], "line": ""} for n in
-                                notes_to_add]
+                failed_cards = [{"front": n["fields"]["Front"],
+                                 "back": n["fields"]["Back"],
+                                 "line": source_lines_for_notes_to_add[idx]}
+                                for idx, n in enumerate(notes_to_add)]
 
             q.put({
                 "type": "complete", "deck_name": deck_name, "counts": counts,
