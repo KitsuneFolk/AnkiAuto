@@ -4,3 +4,4 @@
 /release_builds
 AnkiAutoApp.spec
 logs.txt
+__pycache__/
