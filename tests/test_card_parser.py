@@ -138,11 +138,11 @@ class TestParsePassiveLine(unittest.TestCase):
         self.assertIsNone(tag)
 
     def test_vocab_card_punctuation_only_front_with_punctuation_back(self):
-        """Tests that if the front and back are only punctuation from the extended set, it still parses."""
-        line = "。「」" # Front part will be "。「", back part will be "」"
+        """Tests that if the front and back are only punctuation from the extended set, it is unparseable."""
+        line = "。「」" # All Japanese characters, should now be unparseable
         front, back, tag = parse_passive_line(line)
-        self.assertEqual(front, "。「")
-        self.assertEqual(back, "」")
+        self.assertIsNone(front, "Line with only JP punctuation should not parse front.")
+        self.assertIsNone(back, "Line with only JP punctuation should not parse back.")
         self.assertIsNone(tag)
 
     def test_vocab_card_single_front_char_no_back(self):
@@ -155,13 +155,66 @@ class TestParsePassiveLine(unittest.TestCase):
                 self.assertIsNone(back, f"Line: '{line}' should not parse back")
                 self.assertIsNone(tag, f"Line: '{line}' should not parse tag")
 
-    def test_vocab_card_multiple_front_chars_parses_correctly(self):
-        """Tests how a string of only 'front' characters is parsed."""
-        # Expects: front="あいうえ", back="お" due to regex greediness and requirement for back part.
+    def test_all_jp_line_is_unparseable(self):
+        """Tests that a line consisting only of Japanese characters is unparseable."""
         line = "あいうえお"
         front, back, tag = parse_passive_line(line)
-        self.assertEqual(front, "あいうえ")
-        self.assertEqual(back, "お")
+        self.assertIsNone(front)
+        self.assertIsNone(back)
+        self.assertIsNone(tag)
+
+        line = "単語" # Single Japanese word, no non-Japanese part
+        front, back, tag = parse_passive_line(line)
+        self.assertIsNone(front)
+        self.assertIsNone(back)
+        self.assertIsNone(tag)
+
+    def test_vocab_card_jp_then_english_then_jp_trailing_trimmed(self):
+        """Tests 'JAPANESE english JAPANESE' -> F: JAPANESE, B: english"""
+        line = "ひながたmodel雛形"
+        front, back, tag = parse_passive_line(line)
+        self.assertEqual(front, "ひながた")
+        self.assertEqual(back, "model")
+        self.assertIsNone(tag)
+
+    def test_vocab_card_jp_then_english_with_space_then_jp_trailing_trimmed(self):
+        """Tests 'JAPANESE english space JAPANESE' -> F: JAPANESE, B: english"""
+        line = "単語 word 熟語" # Should be F:単語, B:word
+        front, back, tag = parse_passive_line(line)
+        self.assertEqual(front, "単語")
+        self.assertEqual(back, "word") # Back stops at space before trailing Japanese
+        self.assertIsNone(tag)
+
+    def test_vocab_card_jp_then_english_comma_jp_is_kept(self):
+        """Tests 'JAPANESE english, JAPANESE' -> F: JAPANESE, B: english, JAPANESE"""
+        line = "ひながたmodel、定義"
+        front, back, tag = parse_passive_line(line)
+        self.assertEqual(front, "ひながた")
+        self.assertEqual(back, "model、定義")
+        self.assertIsNone(tag)
+
+    def test_vocab_card_jp_then_english_engcomma_jp_is_kept(self):
+        """Tests 'JAPANESE english, JAPANESE' with English comma"""
+        line = "ひながたmodel, definition_with_jp_char_例えば"
+        front, back, tag = parse_passive_line(line)
+        self.assertEqual(front, "ひながた")
+        self.assertEqual(back, "model, definition_with_jp_char_例えば")
+        self.assertIsNone(tag)
+
+    def test_vocab_card_jp_then_english_engcomma_english_is_kept(self):
+        """Tests 'JAPANESE english, english'"""
+        line = "ひながたmodel, english_only_after_comma"
+        front, back, tag = parse_passive_line(line)
+        self.assertEqual(front, "ひながた")
+        self.assertEqual(back, "model, english_only_after_comma")
+        self.assertIsNone(tag)
+
+    def test_vocab_card_jp_then_english_with_internal_spaces(self):
+        """Tests 'JAPANESE spaced english'"""
+        line = "単語 spaced out english"
+        front, back, tag = parse_passive_line(line)
+        self.assertEqual(front, "単語")
+        self.assertEqual(back, "spaced out english") # The whole non-Japanese part
         self.assertIsNone(tag)
 
     def test_vocab_card_punctuation_at_end_of_front(self):
