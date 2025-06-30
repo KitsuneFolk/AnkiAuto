@@ -30,22 +30,21 @@ class AnkiImporterApp:
         # First, ensure the layout for Custom.TLabelFrame is copied from the default TLabelFrame
         # This might vary slightly if 'clam' names its default LabelFrame style differently,
         # but 'TLabelFrame' is standard. If this still fails, one might need to inspect theme elements.
-        try:
-            current_layout = self.style.layout("TLabelFrame")
-            if current_layout:
-                 self.style.layout("Custom.TLabelFrame", current_layout)
-        except tk.TclError:
-            logger.warning("Could not copy layout for TLabelFrame. Custom style might not appear as expected.")
+        # try:
+        #     current_layout = self.style.layout("TLabelFrame")
+        #     if current_layout:
+        #          self.style.layout("Custom.TLabelFrame", current_layout)
+        # except tk.TclError:
+        #     logger.warning("Could not copy layout for TLabelFrame. Custom style might not appear as expected.")
             # Fallback or alternative approach might be needed if this is common.
 
-        # Configure Custom.TLabelFrame, focusing on less intrusive properties first
-        self.style.configure("Custom.TLabelFrame", padding=10)
-        # self.style.configure("Custom.TLabelFrame", padding=10, relief="groove", borderwidth=2) # Deferring relief/border
-        self.style.configure("Custom.TLabelFrame.Label", font=self.title_font, padding=(0,5))
+        # Reverting Custom.TLabelFrame to use default TLabelFrame and only styling its Label child.
+        # self.style.configure("Custom.TLabelFrame", padding=10) # Removed
+        self.style.configure("TLabelFrame.Label", font=self.title_font, padding=(0,5)) # Apply to default TLabelFrame's label
 
         # For TButton, it's generally safer to create a custom style if modifying too,
         # but font and padding are often fine. Let's make it custom to be safe and consistent.
-        self.style.configure("Custom.TButton", font=self.button_font, padding=5)
+        self.style.configure("Custom.TButton", font=self.button_font, padding=5) # Keeping Custom.TButton for now
         self.style.configure("Progress.TLabel", font=self.label_font) # For progress text
 
         main_frame = ttk.Frame(root, padding="20") # Increased padding
@@ -65,7 +64,7 @@ class AnkiImporterApp:
         self.process_import_queue()
 
     def create_input_pane(self, parent, title, start_command):
-        pane = ttk.LabelFrame(parent, text=title, style="Custom.TLabelFrame") # Apply custom style
+        pane = ttk.LabelFrame(parent, text=title) # Reverted to default style
         pane.text_widget_font = self.text_font # Store for later use if needed
 
         text_widget = Text(pane, wrap=tk.WORD, height=15, width=45, font=self.text_font, relief="solid", borderwidth=1) # Increased size, font, border
@@ -328,28 +327,35 @@ class ImportResultsWindow(Toplevel):
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Style configurations for this window
-        try:
-            current_lf_layout = self.style.layout("TLabelFrame") # Assuming base TLabelFrame layout is desired
-            if current_lf_layout:
-                self.style.layout("ResultsWindow.TLabelFrame", current_lf_layout)
+        # Removing ResultsWindow.TLabelFrame custom style attempt
+        # self.style.configure("ResultsWindow.TLabelFrame", padding=8)
+        # self.style.configure("ResultsWindow.TLabelFrame.Label", font=self.title_font, padding=(0,4)) # This would need to target default TLabelFrame.Label
 
-            # Attempt to copy TButton layout for ResultsWindow.TButton
-            # If Custom.TButton was already defined and based on TButton, this is also fine.
-            # Or, if ResultsWindow.TButton should be based on the app's Custom.TButton:
-            # current_btn_layout = self.style.layout("Custom.TButton")
-            current_btn_layout = self.style.layout("TButton") # Base TButton
+        # If main app's TLabelFrame.Label is styled, it might apply here too, or we can be specific if needed.
+        # For now, let ImportResultsWindow use the global "TLabelFrame.Label" style if defined, or default.
+        # If specific styling for ResultsWindow LabelFrame labels is needed, it would be:
+        # self.style.configure("ResultsLabel.TLabelFrame.Label", font=self.title_font)
+        # And then apply style="ResultsLabel.TLabelFrame" to those labelframes.
+        # For now, relying on global TLabelFrame.Label or default.
+
+        # Keeping ResultsWindow.TButton for now, assuming it's less problematic.
+        # If Custom.TButton from main app is intended, could pass that style name.
+        # Or define a specific one if different:
+        try:
+            # Base ResultsWindow.TButton on the app's Custom.TButton if available, else TButton
+            base_button_style = "Custom.TButton"
+            try:
+                self.style.layout(base_button_style) # Check if Custom.TButton exists
+            except tk.TclError:
+                base_button_style = "TButton" # Fallback to base TButton
+
+            current_btn_layout = self.style.layout(base_button_style)
             if current_btn_layout:
                 self.style.layout("ResultsWindow.TButton", current_btn_layout)
-
         except tk.TclError as e:
-            logger.warning(f"Could not copy layout for ResultsWindow styles: {e}")
+            logger.warning(f"Could not copy layout for ResultsWindow.TButton: {e}")
 
-        # Ensure these are unique and don't clash with global styles if not intended
-        self.style.configure("ResultsWindow.TLabelFrame", padding=8) # Simplified: only padding
-        # self.style.configure("ResultsWindow.TLabelFrame", padding=8, relief="groove", borderwidth=1) # Deferring relief/border
-        self.style.configure("ResultsWindow.TLabelFrame.Label", font=self.title_font, padding=(0,4))
-
-        self.style.configure("ResultsWindow.TButton", font=self.button_font, padding=3) # Assuming TButton configuration is fine
+        self.style.configure("ResultsWindow.TButton", font=self.button_font, padding=3)
         self.style.configure("ResultsWindow.Header.TLabel", font=font.Font(family="Helvetica", size=11, weight="bold"))
         # Note: ResultsWindow.Header.TLabel is a TLabel, which usually doesn't require complex layout copying like LabelFrame.
 
@@ -375,21 +381,23 @@ class ImportResultsWindow(Toplevel):
 
 
         if results.get('skipped_cards'):
-            skipped_outer_frame = ttk.LabelFrame(scrollable_frame, text="Skipped Cards (Duplicates)", style="ResultsWindow.TLabelFrame")
+            # Using default TLabelFrame, custom styling for its label will be via "TLabelFrame.Label" if set globally
+            skipped_outer_frame = ttk.LabelFrame(scrollable_frame, text="Skipped Cards (Duplicates)", padding=10)
             skipped_outer_frame.pack(fill=tk.X, expand=True, padx=5, pady=5)
             for card in results['skipped_cards']:
                 self.create_skipped_card_frame(skipped_outer_frame, card)
 
         if results.get('failed_cards'):
             self.create_simple_list_frame(scrollable_frame, "Failed to Add to Anki", results['failed_cards'],
-                                          lambda card: f"Line: {card.get('line', card.get('front'))}", style_name="ResultsWindow.TLabelFrame")
+                                          lambda card: f"Line: {card.get('line', card.get('front'))}") # Removed style_name
 
         if results.get('unparsable_lines'):
             self.create_simple_list_frame(scrollable_frame, "Unparsable Lines", results['unparsable_lines'],
-                                          lambda line: f"Line: {line.strip()}", style_name="ResultsWindow.TLabelFrame")
+                                          lambda line: f"Line: {line.strip()}") # Removed style_name
 
-    def create_simple_list_frame(self, parent, title, items, formatter, style_name):
-        frame = ttk.LabelFrame(parent, text=title, style=style_name, padding=10) # style_name is now "ResultsWindow.TLabelFrame"
+    def create_simple_list_frame(self, parent, title, items, formatter): # Removed style_name from signature
+        # Using default TLabelFrame, custom styling for its label will be via "TLabelFrame.Label" if set globally
+        frame = ttk.LabelFrame(parent, text=title, padding=10)
         frame.pack(fill=tk.X, expand=True, padx=5, pady=(10,5)) # Added more vertical padding
 
         # Use a Text widget for better layout and potential scrollability if needed, but keep it simple
