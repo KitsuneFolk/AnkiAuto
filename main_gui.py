@@ -38,8 +38,10 @@ class AnkiImporterApp:
             logger.warning("Could not copy layout for TLabelFrame. Custom style might not appear as expected.")
             # Fallback or alternative approach might be needed if this is common.
 
-        self.style.configure("Custom.TLabelFrame", padding=10, relief="groove", borderwidth=2)
-        self.style.configure("Custom.TLabelFrame.Label", font=self.title_font, padding=(0,5)) # Style for the label within the custom LabelFrame
+        # Configure Custom.TLabelFrame, focusing on less intrusive properties first
+        self.style.configure("Custom.TLabelFrame", padding=10)
+        # self.style.configure("Custom.TLabelFrame", padding=10, relief="groove", borderwidth=2) # Deferring relief/border
+        self.style.configure("Custom.TLabelFrame.Label", font=self.title_font, padding=(0,5))
 
         # For TButton, it's generally safer to create a custom style if modifying too,
         # but font and padding are often fine. Let's make it custom to be safe and consistent.
@@ -343,9 +345,11 @@ class ImportResultsWindow(Toplevel):
             logger.warning(f"Could not copy layout for ResultsWindow styles: {e}")
 
         # Ensure these are unique and don't clash with global styles if not intended
-        self.style.configure("ResultsWindow.TLabelFrame", padding=8, relief="groove", borderwidth=1)
+        self.style.configure("ResultsWindow.TLabelFrame", padding=8) # Simplified: only padding
+        # self.style.configure("ResultsWindow.TLabelFrame", padding=8, relief="groove", borderwidth=1) # Deferring relief/border
         self.style.configure("ResultsWindow.TLabelFrame.Label", font=self.title_font, padding=(0,4))
-        self.style.configure("ResultsWindow.TButton", font=self.button_font, padding=3)
+
+        self.style.configure("ResultsWindow.TButton", font=self.button_font, padding=3) # Assuming TButton configuration is fine
         self.style.configure("ResultsWindow.Header.TLabel", font=font.Font(family="Helvetica", size=11, weight="bold"))
         # Note: ResultsWindow.Header.TLabel is a TLabel, which usually doesn't require complex layout copying like LabelFrame.
 
