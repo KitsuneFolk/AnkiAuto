@@ -27,9 +27,9 @@ class AnkiImporterApp:
         self.text_font = font.Font(family="Arial", size=10)
 
         # Configure styles
-        self.style.configure("TLabelFrame", padding=10, relief="groove", borderwidth=2)
-        self.style.configure("TLabelFrame.Label", font=self.title_font, padding=(0,5))
-        self.style.configure("TButton", font=self.button_font, padding=5)
+        self.style.configure("Custom.TLabelFrame", padding=10, relief="groove", borderwidth=2)
+        self.style.configure("Custom.TLabelFrame.Label", font=self.title_font, padding=(0,5)) # Style for the label within the custom LabelFrame
+        self.style.configure("TButton", font=self.button_font, padding=5) # This is usually fine as it's a common widget
         self.style.configure("Progress.TLabel", font=self.label_font) # For progress text
 
         main_frame = ttk.Frame(root, padding="20") # Increased padding
@@ -49,7 +49,7 @@ class AnkiImporterApp:
         self.process_import_queue()
 
     def create_input_pane(self, parent, title, start_command):
-        pane = ttk.LabelFrame(parent, text=title, style="TLabelFrame") # Apply style
+        pane = ttk.LabelFrame(parent, text=title, style="Custom.TLabelFrame") # Apply custom style
         pane.text_widget_font = self.text_font # Store for later use if needed
 
         text_widget = Text(pane, wrap=tk.WORD, height=15, width=45, font=self.text_font, relief="solid", borderwidth=1) # Increased size, font, border
@@ -312,15 +312,16 @@ class ImportResultsWindow(Toplevel):
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Style configurations for this window
-        self.style.configure("Results.TLabelFrame", padding=8, relief="groove", borderwidth=1)
-        self.style.configure("Results.TLabelFrame.Label", font=self.title_font, padding=(0,4))
-        self.style.configure("Results.TButton", font=self.button_font, padding=3)
-        self.style.configure("Header.TLabel", font=font.Font(family="Helvetica", size=11, weight="bold"))
+        # Ensure these are unique and don't clash with global styles if not intended
+        self.style.configure("ResultsWindow.TLabelFrame", padding=8, relief="groove", borderwidth=1)
+        self.style.configure("ResultsWindow.TLabelFrame.Label", font=self.title_font, padding=(0,4))
+        self.style.configure("ResultsWindow.TButton", font=self.button_font, padding=3) # Renamed to avoid conflict if main TButton style is different
+        self.style.configure("ResultsWindow.Header.TLabel", font=font.Font(family="Helvetica", size=11, weight="bold"))
 
 
         counts = results['counts']
         summary_text = (f"Import Summary for '{results['deck_name']}':\n" + "\n".join([f"  - {k.capitalize()}: {v}" for k, v in counts.items()]))
-        ttk.Label(main_frame, text=summary_text, justify=tk.LEFT, font=self.label_font, style="Header.TLabel").pack(anchor='w', pady=(0,10))
+        ttk.Label(main_frame, text=summary_text, justify=tk.LEFT, font=self.label_font, style="ResultsWindow.Header.TLabel").pack(anchor='w', pady=(0,10))
         ttk.Separator(main_frame, orient='horizontal').pack(fill='x', pady=10)
 
         # Main scrollable area
@@ -340,21 +341,21 @@ class ImportResultsWindow(Toplevel):
 
 
         if results.get('skipped_cards'):
-            skipped_outer_frame = ttk.LabelFrame(scrollable_frame, text="Skipped Cards (Duplicates)", style="Results.TLabelFrame")
+            skipped_outer_frame = ttk.LabelFrame(scrollable_frame, text="Skipped Cards (Duplicates)", style="ResultsWindow.TLabelFrame")
             skipped_outer_frame.pack(fill=tk.X, expand=True, padx=5, pady=5)
             for card in results['skipped_cards']:
                 self.create_skipped_card_frame(skipped_outer_frame, card)
 
         if results.get('failed_cards'):
             self.create_simple_list_frame(scrollable_frame, "Failed to Add to Anki", results['failed_cards'],
-                                          lambda card: f"Line: {card.get('line', card.get('front'))}", style_name="Results.TLabelFrame")
+                                          lambda card: f"Line: {card.get('line', card.get('front'))}", style_name="ResultsWindow.TLabelFrame")
 
         if results.get('unparsable_lines'):
             self.create_simple_list_frame(scrollable_frame, "Unparsable Lines", results['unparsable_lines'],
-                                          lambda line: f"Line: {line.strip()}", style_name="Results.TLabelFrame")
+                                          lambda line: f"Line: {line.strip()}", style_name="ResultsWindow.TLabelFrame")
 
     def create_simple_list_frame(self, parent, title, items, formatter, style_name):
-        frame = ttk.LabelFrame(parent, text=title, style=style_name, padding=10)
+        frame = ttk.LabelFrame(parent, text=title, style=style_name, padding=10) # style_name is now "ResultsWindow.TLabelFrame"
         frame.pack(fill=tk.X, expand=True, padx=5, pady=(10,5)) # Added more vertical padding
 
         # Use a Text widget for better layout and potential scrollability if needed, but keep it simple
@@ -446,9 +447,9 @@ class ImportResultsWindow(Toplevel):
                 anki_utils.reset_cards([card_data['note_id']])
 
             # Using ttk.Button and applying style
-            append_btn = ttk.Button(action_frame, text="Append & Reset", command=lambda: run_task_in_thread(on_append), style="Results.TButton")
-            reset_btn = ttk.Button(action_frame, text="Just Reset", command=lambda: run_task_in_thread(on_reset), style="Results.TButton")
-            modify_btn = ttk.Button(action_frame, text="Modify & Reset", command=lambda: run_task_in_thread(on_modify), style="Results.TButton")
+            append_btn = ttk.Button(action_frame, text="Append & Reset", command=lambda: run_task_in_thread(on_append), style="ResultsWindow.TButton")
+            reset_btn = ttk.Button(action_frame, text="Just Reset", command=lambda: run_task_in_thread(on_reset), style="ResultsWindow.TButton")
+            modify_btn = ttk.Button(action_frame, text="Modify & Reset", command=lambda: run_task_in_thread(on_modify), style="ResultsWindow.TButton")
 
             buttons.extend([append_btn, reset_btn, modify_btn])
             for btn in buttons: btn.pack(side=tk.LEFT, padx=(0,8)) # Adjusted padding
