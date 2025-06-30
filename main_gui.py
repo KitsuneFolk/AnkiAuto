@@ -27,9 +27,23 @@ class AnkiImporterApp:
         self.text_font = font.Font(family="Arial", size=10)
 
         # Configure styles
+        # First, ensure the layout for Custom.TLabelFrame is copied from the default TLabelFrame
+        # This might vary slightly if 'clam' names its default LabelFrame style differently,
+        # but 'TLabelFrame' is standard. If this still fails, one might need to inspect theme elements.
+        try:
+            current_layout = self.style.layout("TLabelFrame")
+            if current_layout:
+                 self.style.layout("Custom.TLabelFrame", current_layout)
+        except tk.TclError:
+            logger.warning("Could not copy layout for TLabelFrame. Custom style might not appear as expected.")
+            # Fallback or alternative approach might be needed if this is common.
+
         self.style.configure("Custom.TLabelFrame", padding=10, relief="groove", borderwidth=2)
         self.style.configure("Custom.TLabelFrame.Label", font=self.title_font, padding=(0,5)) # Style for the label within the custom LabelFrame
-        self.style.configure("TButton", font=self.button_font, padding=5) # This is usually fine as it's a common widget
+
+        # For TButton, it's generally safer to create a custom style if modifying too,
+        # but font and padding are often fine. Let's make it custom to be safe and consistent.
+        self.style.configure("Custom.TButton", font=self.button_font, padding=5)
         self.style.configure("Progress.TLabel", font=self.label_font) # For progress text
 
         main_frame = ttk.Frame(root, padding="20") # Increased padding
@@ -67,10 +81,10 @@ class AnkiImporterApp:
             except tk.TclError:
                 messagebox.showwarning("Paste Error", "Clipboard is empty or contains incompatible content.")
 
-        paste_button = ttk.Button(bottom_frame, text="Paste", command=paste_from_clipboard, style="TButton")
+        paste_button = ttk.Button(bottom_frame, text="Paste", command=paste_from_clipboard, style="Custom.TButton")
         paste_button.pack(side=tk.LEFT, padx=(0,10)) # Added padding
 
-        start_button = ttk.Button(bottom_frame, text="Start Import", command=start_command, style="TButton")
+        start_button = ttk.Button(bottom_frame, text="Start Import", command=start_command, style="Custom.TButton")
         pane.start_button = start_button
         start_button.pack(side=tk.LEFT, fill=tk.X, expand=True) # Changed from tk.RIGHT
 
@@ -312,12 +326,28 @@ class ImportResultsWindow(Toplevel):
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Style configurations for this window
+        try:
+            current_lf_layout = self.style.layout("TLabelFrame") # Assuming base TLabelFrame layout is desired
+            if current_lf_layout:
+                self.style.layout("ResultsWindow.TLabelFrame", current_lf_layout)
+
+            # Attempt to copy TButton layout for ResultsWindow.TButton
+            # If Custom.TButton was already defined and based on TButton, this is also fine.
+            # Or, if ResultsWindow.TButton should be based on the app's Custom.TButton:
+            # current_btn_layout = self.style.layout("Custom.TButton")
+            current_btn_layout = self.style.layout("TButton") # Base TButton
+            if current_btn_layout:
+                self.style.layout("ResultsWindow.TButton", current_btn_layout)
+
+        except tk.TclError as e:
+            logger.warning(f"Could not copy layout for ResultsWindow styles: {e}")
+
         # Ensure these are unique and don't clash with global styles if not intended
         self.style.configure("ResultsWindow.TLabelFrame", padding=8, relief="groove", borderwidth=1)
         self.style.configure("ResultsWindow.TLabelFrame.Label", font=self.title_font, padding=(0,4))
-        self.style.configure("ResultsWindow.TButton", font=self.button_font, padding=3) # Renamed to avoid conflict if main TButton style is different
+        self.style.configure("ResultsWindow.TButton", font=self.button_font, padding=3)
         self.style.configure("ResultsWindow.Header.TLabel", font=font.Font(family="Helvetica", size=11, weight="bold"))
-
+        # Note: ResultsWindow.Header.TLabel is a TLabel, which usually doesn't require complex layout copying like LabelFrame.
 
         counts = results['counts']
         summary_text = (f"Import Summary for '{results['deck_name']}':\n" + "\n".join([f"  - {k.capitalize()}: {v}" for k, v in counts.items()]))
