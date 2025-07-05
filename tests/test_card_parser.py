@@ -246,28 +246,27 @@ class TestParseActiveLine(unittest.TestCase):
         self.assertIsNone(tag)
 
     def test_japanese_then_english_standard(self):
-        """Tests the Japanese (English) format, ensuring front/back are swapped."""
+        """Tests the Japanese (English) format. Front is Japanese, back is English (no parens)."""
         line = "ばらまき (to spend money recklessly)"
         front, back, tag = parse_active_line(line)
-        # Note the swapped order: English part should be the front
-        self.assertEqual(front, "(to spend money recklessly)")
-        self.assertEqual(back, "ばらまき")
+        self.assertEqual(front, "ばらまき")
+        self.assertEqual(back, "to spend money recklessly")
         self.assertIsNone(tag)
 
     def test_japanese_then_english_with_whitespace(self):
-        """Tests the Japanese (English) format with extra whitespace."""
+        """Tests the Japanese (English) format with extra whitespace. Front is Japanese, back is English (no parens)."""
         line = "  ばらまき   (to spend money recklessly)  "
         front, back, tag = parse_active_line(line)
-        self.assertEqual(front, "(to spend money recklessly)")
-        self.assertEqual(back, "ばらまき")
+        self.assertEqual(front, "ばらまき")
+        self.assertEqual(back, "to spend money recklessly")
         self.assertIsNone(tag)
 
     def test_japanese_with_punctuation(self):
-        """Tests that Japanese phrases with punctuation are handled correctly."""
+        """Tests that Japanese phrases with punctuation are handled correctly. Front is Japanese, back is English (no parens)."""
         line = "これは何ですか、ええと (What is this?)"
         front, back, tag = parse_active_line(line)
-        self.assertEqual(front, "(What is this?)")
-        self.assertEqual(back, "これは何ですか、ええと")
+        self.assertEqual(front, "これは何ですか、ええと")
+        self.assertEqual(back, "What is this?")
         self.assertIsNone(tag)
 
     def test_empty_line(self):
@@ -318,6 +317,14 @@ class TestParseActiveLine(unittest.TestCase):
         front, back, tag = parse_active_line(line)
         self.assertEqual(front, "(spending (money) recklessly)")
         self.assertEqual(back, "ばらまき")
+        self.assertIsNone(tag)
+
+    def test_japanese_then_japanese_in_parens(self):
+        """Tests the Japanese1 (Japanese2) format, e.g., こうみょう(巧み)."""
+        line = "こうみょう(巧み)"
+        front, back, tag = parse_active_line(line)
+        self.assertEqual(front, "こうみょう")
+        self.assertEqual(back, "巧み")
         self.assertIsNone(tag)
 
 

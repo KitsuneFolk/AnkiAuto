@@ -114,12 +114,15 @@ def parse_active_line(line):
         back = match_phrase_then_jp.group(2).strip()
         return front, back, None
 
-    # Pattern 2: Japanese (English)
-    match_jp_then_phrase = re.match(r'^(.+?)\s*(\(.+\))$', line)
+    # Pattern 2: MainText (DetailInParens)
+    # Example: こうみょう(巧み) -> front=こうみょう, back=巧み
+    # Example: ばらまき (to spend money recklessly) -> front=ばらまき, back=to spend money recklessly
+    match_jp_then_phrase = re.match(r'^(.+?)\s*(\((.+)\))$', line) # Capture content within parentheses
     if match_jp_then_phrase:
-        # The order is swapped to keep (English) as the front
-        front = match_jp_then_phrase.group(2).strip()
-        back = match_jp_then_phrase.group(1).strip()
+        # Original logic: front = group(2) (parenthetical), back = group(1) (non-parenthetical)
+        # New logic: front = group(1) (non-parenthetical), back = group(3) (content of parenthetical)
+        front = match_jp_then_phrase.group(1).strip()
+        back = match_jp_then_phrase.group(3).strip()
         return front, back, None
 
     return None, None, None
