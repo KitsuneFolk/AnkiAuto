@@ -48,7 +48,7 @@ def get_info_for_existing_notes(deck_name, front_texts):
 
     # Escape quotes in front text for the query
     escaped_fronts = [f.replace('"', '\\"') for f in front_texts]
-    query = f'"deck:{deck_name}" ("Front:{escaped_fronts[0]}"'
+    query = f'("Front:{escaped_fronts[0]}"'
     for f in escaped_fronts[1:]:
         query += f' or "Front:{f}"'
     query += ')'
@@ -78,6 +78,21 @@ def add_notes_bulk(notes_to_add):
     if not notes_to_add:
         return None
     return anki_request("addNotes", notes=notes_to_add)
+
+
+def add_note_single(note_to_add):
+    """
+    Adds a single note, allowing duplicates.
+    A wrapper for the 'addNote' action with allowDuplicate=True.
+    """
+    if not note_to_add:
+        return None
+
+    # Ensure the note payload includes the allowDuplicate option
+    note_payload = note_to_add.copy()
+    note_payload.setdefault('options', {})['allowDuplicate'] = True
+
+    return anki_request("addNote", note=note_payload)
 
 
 def get_note_info(note_id):

@@ -180,7 +180,10 @@ class AnkiImporterApp:
                     existing_info = existing_notes_map[front]
                     card_data = {
                         "front": front, "back_new": card["back"],
-                        "note_id": existing_info["noteId"], "back_old": existing_info["fields"]["Back"]["value"]
+                        "note_id": existing_info["noteId"],
+                        "back_old": existing_info["fields"]["Back"]["value"],
+                        "tags": card["tags"],
+                        "deck_name": deck_name
                     }
                     skipped_cards.append(card_data)
                     continue
@@ -488,12 +491,23 @@ class ImportResultsWindow(Toplevel):
                 # Resetting after modification might be desired if changes were made to scheduling
                 anki_utils.reset_cards([card_data['note_id']])
 
+            def on_force_add():
+                note_to_add = {
+                    "deckName": card_data['deck_name'],
+                    "modelName": config.MODEL_NAME,
+                    "fields": {"Front": card_data['front'], "Back": card_data['back_new']},
+                    "tags": card_data['tags']
+                }
+                anki_utils.add_note_single(note_to_add)
+
             # Using ttk.Button and applying style
             append_btn = ttk.Button(action_frame, text="Append & Reset", command=lambda: run_task_in_thread(on_append), style="ResultsWindow.TButton")
             reset_btn = ttk.Button(action_frame, text="Just Reset", command=lambda: run_task_in_thread(on_reset), style="ResultsWindow.TButton")
             modify_btn = ttk.Button(action_frame, text="Modify & Reset", command=lambda: run_task_in_thread(on_modify), style="ResultsWindow.TButton")
+            force_add_btn = ttk.Button(action_frame, text="Force Add New", command=lambda: run_task_in_thread(on_force_add), style="ResultsWindow.TButton")
 
-            buttons.extend([append_btn, reset_btn, modify_btn])
+
+            buttons.extend([append_btn, reset_btn, modify_btn, force_add_btn])
             for btn in buttons: btn.pack(side=tk.LEFT, padx=(0,8)) # Adjusted padding
 
 
