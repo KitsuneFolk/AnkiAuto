@@ -48,6 +48,44 @@ class TestGetInfoForExistingNotes(unittest.TestCase):
         expected_query = '("Front:front1" or "Front:front2 with \\\"quotes\\\"")'
         self.assertEqual(actual_query, expected_query, "Query format is incorrect")
 
+    @patch('anki_utils.anki_request')
+    def test_deck_name_is_added_to_note_info(self, mock_anki_request):
+        """
+        Verify that the deck name is correctly fetched and added to the note info.
+        """
+        # Mock responses for the sequence of AnkiConnect calls
+        mock_anki_request.side_effect = [
+            # 1. findNotes
+            {"result": [101, 102], "error": None},
+            # 2. notesInfo
+            {"result": [
+                {"noteId": 101, "fields": {"Front": {"value": "front1"}}, "cards": [201]},
+                {"noteId": 102, "fields": {"Front": {"value": "front2"}}, "cards": [202]}
+            ], "error": None},
+            # 3. cardsInfo
+            {"result": [
+                {"cardId": 201, "deckName": "Deck A"},
+                {"cardId": 202, "deckName": "Deck B"}
+            ], "error": None}
+        ]
+
+        deck_name = "ImportDeck"
+        front_texts = ["front1", "front2"]
+
+        result_map = anki_utils.get_info_for_existing_notes(deck_name, front_texts)
+
+        # Check that the deck names were added to the note info objects
+        self.assertIn("deckName", result_map["front1"])
+        self.assertEqual(result_map["front1"]["deckName"], "Deck A")
+        self.assertIn("deckName", result_map["front2"])
+        self.assertEqual(result_map["front2"]["deckName"], "Deck B")
+
+        # Verify that anki_request was called three times with the correct actions
+        self.assertEqual(mock_anki_request.call_count, 3)
+        self.assertEqual(mock_anki_request.call_args_list[0][0][0], "findNotes")
+        self.assertEqual(mock_anki_request.call_args_list[1][0][0], "notesInfo")
+        self.assertEqual(mock_anki_request.call_args_list[2][0][0], "cardsInfo")
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

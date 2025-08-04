@@ -63,10 +63,24 @@ def get_info_for_existing_notes(deck_name, front_texts):
     if not info_response or not info_response.get("result"):
         return {}
 
+    notes_info = info_response['result']
+
+    # Get the deck name for each note by checking its first card
+    all_card_ids = [info['cards'][0] for info in notes_info if info.get('cards')]
+    if all_card_ids:
+        cards_info_response = anki_request("cardsInfo", cards=all_card_ids)
+        if cards_info_response and cards_info_response.get("result"):
+            card_id_to_deck = {info['cardId']: info['deckName'] for info in cards_info_response['result']}
+            for info in notes_info:
+                if info.get('cards'):
+                    first_card_id = info['cards'][0]
+                    if first_card_id in card_id_to_deck:
+                        info['deckName'] = card_id_to_deck[first_card_id]
+
     # Create a lookup map: {front_text: note_info}
     return {
         info['fields']['Front']['value']: info
-        for info in info_response['result']
+        for info in notes_info
     }
 
 

@@ -183,7 +183,8 @@ class AnkiImporterApp:
                         "note_id": existing_info["noteId"],
                         "back_old": existing_info["fields"]["Back"]["value"],
                         "tags": card["tags"],
-                        "deck_name": deck_name
+                        "deck_name": deck_name,
+                        "duplicate_deck_name": existing_info.get("deckName")
                     }
                     skipped_cards.append(card_data)
                     continue
@@ -424,7 +425,10 @@ class ImportResultsWindow(Toplevel):
         card_frame.pack(fill=tk.X, padx=5, pady=5, expand=True)
 
         # Card Front as a header for this small section
-        front_label = ttk.Label(card_frame, text=f"Card: {card_data['front']}", font=font.Font(family="Arial", size=10, weight="bold"))
+        front_text = f"Card: {card_data['front']}"
+        if card_data.get('duplicate_deck_name') and card_data['duplicate_deck_name'] != card_data['deck_name']:
+            front_text += f" (Duplicate in deck: '{card_data['duplicate_deck_name']}')"
+        front_label = ttk.Label(card_frame, text=front_text, font=font.Font(family="Arial", size=10, weight="bold"))
         front_label.pack(anchor="w", pady=(0,5))
 
         content_frame = ttk.Frame(card_frame)
