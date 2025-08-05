@@ -75,16 +75,6 @@ class AnkiImporterApp:
         bottom_frame = ttk.Frame(pane)
         bottom_frame.pack(fill=tk.X, pady=(5,0))
 
-        def paste_from_clipboard():
-            try:
-                text_widget.delete("1.0", tk.END)
-                text_widget.insert("1.0", self.root.clipboard_get())
-            except tk.TclError:
-                messagebox.showwarning("Paste Error", "Clipboard is empty or contains incompatible content.")
-
-        paste_button = ttk.Button(bottom_frame, text="Paste", command=paste_from_clipboard, style="Custom.TButton")
-        paste_button.pack(side=tk.LEFT, padx=(0,10)) # Added padding
-
         start_button = ttk.Button(bottom_frame, text="Start Import", command=start_command, style="Custom.TButton")
         pane.start_button = start_button
         start_button.pack(side=tk.LEFT, fill=tk.X, expand=True) # Changed from tk.RIGHT
