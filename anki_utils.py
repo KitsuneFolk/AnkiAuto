@@ -155,17 +155,11 @@ def get_anki_executable_path():
         possible_paths = [
             os.path.join(os.environ["ProgramFiles"], "Anki", "anki.exe"),
             os.path.join(os.environ["ProgramFiles(x86)"], "Anki", "anki.exe"),
+            os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'Anki', 'anki.exe'),
         ]
-    elif sys.platform == "darwin":
-        # Common path for macOS
-        possible_paths = ["/Applications/Anki.app/Contents/MacOS/Anki"]
-    else:
-        # Common path for Linux
-        possible_paths = ["/usr/bin/anki", "/usr/local/bin/anki"]
-
-    for path in possible_paths:
-        if os.path.exists(path):
-            return path
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
     return None
 
 
