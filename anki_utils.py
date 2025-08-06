@@ -142,6 +142,51 @@ def reset_cards(note_ids):
     return anki_request("forgetCards", cards=card_ids)
 
 
+import os
+import subprocess
+import sys
+import time
+
+
+def get_anki_executable_path():
+    """Tries to find the Anki executable path for the current OS."""
+    if sys.platform == "win32":
+        # Common paths for Windows
+        possible_paths = [
+            os.path.join(os.environ["ProgramFiles"], "Anki", "anki.exe"),
+            os.path.join(os.environ["ProgramFiles(x86)"], "Anki", "anki.exe"),
+        ]
+    elif sys.platform == "darwin":
+        # Common path for macOS
+        possible_paths = ["/Applications/Anki.app/Contents/MacOS/Anki"]
+    else:
+        # Common path for Linux
+        possible_paths = ["/usr/bin/anki", "/usr/local/bin/anki"]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def launch_anki():
+    """Launches the Anki application if it's not already running."""
+    anki_path = get_anki_executable_path()
+    if anki_path:
+        try:
+            subprocess.Popen([anki_path])
+            logger.info(f"Launched Anki from: {anki_path}")
+            # Wait for Anki to start up
+            time.sleep(10)  # 10 seconds might be enough
+            return True
+        except Exception as e:
+            logger.error(f"Failed to launch Anki: {e}")
+            return False
+    else:
+        logger.warning("Could not find Anki executable. Please start it manually.")
+        return False
+
+
 def open_editor_for_note(note_id):
     """Opens the Anki Edit window for a specific note."""
     return anki_request("guiEditNote", note=note_id)

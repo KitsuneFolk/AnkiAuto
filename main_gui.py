@@ -510,9 +510,20 @@ if __name__ == "__main__":
 
     try:
         if anki_utils.anki_request('version') is None:
-            logger.critical("Could not connect to AnkiConnect on startup.")
-            messagebox.showerror("Anki Connection Error",
-                                 "Could not connect to Anki.\nPlease ensure Anki is running with the AnkiConnect add-on.")
+            logger.info("Could not connect to AnkiConnect. Trying to launch Anki...")
+            if anki_utils.launch_anki():
+                if anki_utils.anki_request('version') is None:
+                    logger.critical("Failed to connect to AnkiConnect after launching.")
+                    messagebox.showerror("Anki Connection Error",
+                                         "Anki was started, but could not connect.\nPlease check if the AnkiConnect add-on is installed and enabled.")
+                else:
+                    logger.info("Successfully connected to AnkiConnect after launching.")
+                    root = tk.Tk()
+                    app = AnkiImporterApp(root)
+                    root.mainloop()
+            else:
+                messagebox.showerror("Anki Connection Error",
+                                     "Could not connect to Anki and failed to launch it.\nPlease ensure Anki is installed and start it manually.")
         else:
             logger.info("Successfully connected to AnkiConnect.")
             root = tk.Tk()
