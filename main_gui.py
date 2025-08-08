@@ -17,7 +17,7 @@ DARK_THEME = {
     "foreground": "#EAEAEA",
     "widget_bg": "#3C3C3C",
     "widget_fg": "#EAEAEA",
-    "accent": "#007ACC",
+    "accent": "#FFFFFF",  # Changed from blue to white
     "disabled_fg": "#8A8A8A",
     "border": "#555555",
     "text_bg": "#252525",
@@ -28,8 +28,9 @@ DARK_THEME = {
     "button_hover": "#6A6A6A",
     "progress_bar": "#007ACC",
     "progress_trough": "#3C3C3C",
-    "groove_relief_bg": "#3C3C3C",  # For frames with groove relief
+    "groove_relief_bg": "#3C3C3C",
     "readonly_bg": "#383838",
+    "duplicate_bg": "#4F4F4F",  # For duplicates in other decks
 }
 
 
@@ -41,7 +42,7 @@ class AnkiImporterApp:
         self.style = ttk.Style()
 
         # Define custom fonts
-        self.title_font = font.Font(family="Helvetica", size=14, weight="bold")
+        self.title_font = font.Font(family="Helvetica", size=15, weight="bold") # Increased size
         self.label_font = font.Font(family="Arial", size=10)
         self.button_font = font.Font(family="Arial", size=10, weight="bold")
         self.text_font = font.Font(family="Arial", size=10)
@@ -147,6 +148,7 @@ class AnkiImporterApp:
         # Ensure the main frame for the panes uses the dark theme background
         # This might need to be applied to the main_frame directly if it's already created.
         # self.main_frame.config(bg=DARK_THEME["background"]) # Example of direct configuration
+        self.style.configure("Duplicate.TFrame", background=DARK_THEME["duplicate_bg"])
 
     def create_input_pane(self, parent, title, start_command):
         pane = ttk.LabelFrame(parent, text=title)
@@ -481,14 +483,19 @@ class ImportResultsWindow(Toplevel):
         text_widget.pack(fill=tk.X, expand=True, pady=(5, 0))
 
     def create_skipped_card_frame(self, parent, card_data):
-        card_frame = ttk.Frame(parent, padding=(5, 8), relief="groove", borderwidth=1)
+        is_external_duplicate = card_data.get('duplicate_deck_name') and card_data['duplicate_deck_name'] != card_data['deck_name']
+        style = "Duplicate.TFrame" if is_external_duplicate else "TFrame"
+
+        card_frame = ttk.Frame(parent, padding=(5, 8), relief="groove", borderwidth=1, style=style)
         card_frame.pack(fill=tk.X, padx=5, pady=5, expand=True)
 
         front_text = f"Card: {card_data['front']}"
-        if card_data.get('duplicate_deck_name') and card_data['duplicate_deck_name'] != card_data['deck_name']:
+        if is_external_duplicate:
             front_text += f" (Duplicate in deck: '{card_data['duplicate_deck_name']}')"
+
         front_label = ttk.Label(card_frame, text=front_text, font=font.Font(family="Arial", size=10, weight="bold"),
-                                background=DARK_THEME["background"], foreground=DARK_THEME["accent"])
+                                background=DARK_THEME["duplicate_bg"] if is_external_duplicate else DARK_THEME["background"],
+                                foreground=DARK_THEME["accent"])
         front_label.pack(anchor="w", pady=(0, 5))
 
         content_frame = ttk.Frame(card_frame)
