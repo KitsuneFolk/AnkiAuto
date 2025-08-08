@@ -477,6 +477,10 @@ class ImportResultsWindow(Toplevel):
                 anki_utils.update_note_fields(card_data['note_id'], {"Back": updated_back})
                 anki_utils.reset_cards([card_data['note_id']])
 
+            def on_replace():
+                anki_utils.update_note_fields(card_data['note_id'], {"Back": card_data['back_new']})
+                anki_utils.reset_cards([card_data['note_id']])
+
             def on_reset():
                 anki_utils.reset_cards([card_data['note_id']])
 
@@ -496,12 +500,13 @@ class ImportResultsWindow(Toplevel):
 
             # Using ttk.Button and applying style
             append_btn = ttk.Button(action_frame, text="Append & Reset", command=lambda: run_task_in_thread(on_append), style="ResultsWindow.TButton")
+            replace_btn = ttk.Button(action_frame, text="Replace & Reset", command=lambda: run_task_in_thread(on_replace), style="ResultsWindow.TButton")
             reset_btn = ttk.Button(action_frame, text="Just Reset", command=lambda: run_task_in_thread(on_reset), style="ResultsWindow.TButton")
             modify_btn = ttk.Button(action_frame, text="Modify & Reset", command=lambda: run_task_in_thread(on_modify), style="ResultsWindow.TButton")
             force_add_btn = ttk.Button(action_frame, text="Force Add New", command=lambda: run_task_in_thread(on_force_add), style="ResultsWindow.TButton")
 
 
-            buttons.extend([append_btn, reset_btn, modify_btn, force_add_btn])
+            buttons.extend([append_btn, replace_btn, reset_btn, modify_btn, force_add_btn])
             for btn in buttons: btn.pack(side=tk.LEFT, padx=(0,8)) # Adjusted padding
 
 
