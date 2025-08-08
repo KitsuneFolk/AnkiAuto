@@ -49,7 +49,7 @@ class AnkiImporterApp:
         # Apply the dark theme
         self.setup_dark_theme()
 
-        main_frame = ttk.Frame(root, padding="20", style="TFrame")
+        main_frame = ttk.Frame(root, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
         self.main_frame = main_frame
 
@@ -149,7 +149,7 @@ class AnkiImporterApp:
         # self.main_frame.config(bg=DARK_THEME["background"]) # Example of direct configuration
 
     def create_input_pane(self, parent, title, start_command):
-        pane = ttk.LabelFrame(parent, text=title, style="TLabelFrame")
+        pane = ttk.LabelFrame(parent, text=title)
         pane.text_widget_font = self.text_font
 
         text_widget = Text(pane, wrap=tk.WORD, height=15, width=45, font=self.text_font,
@@ -412,7 +412,7 @@ class ImportResultsWindow(Toplevel):
         self.button_font = font.Font(family="Arial", size=9)
         self.text_font = font.Font(family="Arial", size=10)
 
-        main_frame = ttk.Frame(self, padding=15, style="TFrame")
+        main_frame = ttk.Frame(self, padding=15)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Specific styles for this window
@@ -437,12 +437,12 @@ class ImportResultsWindow(Toplevel):
         ttk.Separator(main_frame, orient='horizontal').pack(fill='x', pady=10)
 
         # Main scrollable area
-        canvas_frame = ttk.Frame(main_frame, style="TFrame")
+        canvas_frame = ttk.Frame(main_frame)
         canvas_frame.pack(fill=tk.BOTH, expand=True)
 
         canvas = tk.Canvas(canvas_frame, bg=DARK_THEME["background"], borderwidth=0, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview, style="TScrollbar")
-        scrollable_frame = ttk.Frame(canvas, style="TFrame", padding=(10, 0))
+        scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, padding=(10, 0))
 
         scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
@@ -452,7 +452,7 @@ class ImportResultsWindow(Toplevel):
         scrollbar.pack(side="right", fill="y")
 
         if results.get('skipped_cards'):
-            skipped_outer_frame = ttk.LabelFrame(scrollable_frame, text="Skipped Cards (Duplicates)", padding=10, style="TLabelFrame")
+            skipped_outer_frame = ttk.LabelFrame(scrollable_frame, text="Skipped Cards (Duplicates)", padding=10)
             skipped_outer_frame.pack(fill=tk.X, expand=True, padx=5, pady=5)
             for card in results['skipped_cards']:
                 self.create_skipped_card_frame(skipped_outer_frame, card)
@@ -466,7 +466,7 @@ class ImportResultsWindow(Toplevel):
                                           lambda line: f"Line: {line.strip()}")
 
     def create_simple_list_frame(self, parent, title, items, formatter):
-        frame = ttk.LabelFrame(parent, text=title, padding=10, style="TLabelFrame")
+        frame = ttk.LabelFrame(parent, text=title, padding=10)
         frame.pack(fill=tk.X, expand=True, padx=5, pady=(10, 5))
 
         text_content = "\n".join(formatter(item) for item in items)
@@ -481,7 +481,7 @@ class ImportResultsWindow(Toplevel):
         text_widget.pack(fill=tk.X, expand=True, pady=(5, 0))
 
     def create_skipped_card_frame(self, parent, card_data):
-        card_frame = ttk.Frame(parent, padding=(5, 8), style="TFrame", relief="groove", borderwidth=1)
+        card_frame = ttk.Frame(parent, padding=(5, 8), relief="groove", borderwidth=1)
         card_frame.pack(fill=tk.X, padx=5, pady=5, expand=True)
 
         front_text = f"Card: {card_data['front']}"
@@ -491,7 +491,7 @@ class ImportResultsWindow(Toplevel):
                                 background=DARK_THEME["background"], foreground=DARK_THEME["accent"])
         front_label.pack(anchor="w", pady=(0, 5))
 
-        content_frame = ttk.Frame(card_frame, style="TFrame")
+        content_frame = ttk.Frame(card_frame)
         content_frame.pack(fill=tk.X, expand=True, pady=(0, 8))
 
         # Current Back
@@ -516,7 +516,7 @@ class ImportResultsWindow(Toplevel):
         content_frame.grid_columnconfigure(1, weight=1, minsize=200)
 
         if card_data.get('note_id'):
-            action_frame = ttk.Frame(card_frame, style="TFrame")
+            action_frame = ttk.Frame(card_frame)
             action_frame.pack(fill=tk.X, pady=(5, 0))
             buttons = []
 
