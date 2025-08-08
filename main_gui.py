@@ -11,14 +11,34 @@ import parsers
 
 logger = logging.getLogger(__name__)
 
+# Dark Theme Color Palette
+DARK_THEME = {
+    "background": "#2E2E2E",
+    "foreground": "#EAEAEA",
+    "widget_bg": "#3C3C3C",
+    "widget_fg": "#EAEAEA",
+    "accent": "#007ACC",
+    "disabled_fg": "#8A8A8A",
+    "border": "#555555",
+    "text_bg": "#252525",
+    "text_fg": "#EAEAEA",
+    "text_insert": "#FFFFFF",
+    "button_bg": "#555555",
+    "button_fg": "#EAEAEA",
+    "button_hover": "#6A6A6A",
+    "progress_bar": "#007ACC",
+    "progress_trough": "#3C3C3C",
+    "groove_relief_bg": "#3C3C3C",  # For frames with groove relief
+    "readonly_bg": "#383838",
+}
+
 
 class AnkiImporterApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Anki Card Importer")
-        self.root.geometry("950x700") # Increased size
+        self.root.geometry("950x700")
         self.style = ttk.Style()
-        self.style.theme_use('clam') # Using a more modern theme
 
         # Define custom fonts
         self.title_font = font.Font(family="Helvetica", size=14, weight="bold")
@@ -26,29 +46,12 @@ class AnkiImporterApp:
         self.button_font = font.Font(family="Arial", size=10, weight="bold")
         self.text_font = font.Font(family="Arial", size=10)
 
-        # Configure styles
-        # First, ensure the layout for Custom.TLabelFrame is copied from the default TLabelFrame
-        # This might vary slightly if 'clam' names its default LabelFrame style differently,
-        # but 'TLabelFrame' is standard. If this still fails, one might need to inspect theme elements.
-        # try:
-        #     current_layout = self.style.layout("TLabelFrame")
-        #     if current_layout:
-        #          self.style.layout("Custom.TLabelFrame", current_layout)
-        # except tk.TclError:
-        #     logger.warning("Could not copy layout for TLabelFrame. Custom style might not appear as expected.")
-            # Fallback or alternative approach might be needed if this is common.
+        # Apply the dark theme
+        self.setup_dark_theme()
 
-        # Reverting Custom.TLabelFrame to use default TLabelFrame and only styling its Label child.
-        # self.style.configure("Custom.TLabelFrame", padding=10) # Removed
-        self.style.configure("TLabelFrame.Label", font=self.title_font, padding=(0,5)) # Apply to default TLabelFrame's label
-
-        # For TButton, it's generally safer to create a custom style if modifying too,
-        # but font and padding are often fine. Let's make it custom to be safe and consistent.
-        self.style.configure("Custom.TButton", font=self.button_font, padding=5) # Keeping Custom.TButton for now
-        self.style.configure("Progress.TLabel", font=self.label_font) # For progress text
-
-        main_frame = ttk.Frame(root, padding="20") # Increased padding
+        main_frame = ttk.Frame(root, padding="20", style="TFrame")
         main_frame.pack(fill=tk.BOTH, expand=True)
+        self.main_frame = main_frame
 
         self.panes_by_deck_name = {}
 
@@ -63,12 +66,104 @@ class AnkiImporterApp:
         self.import_queue = queue.Queue()
         self.process_import_queue()
 
-    def create_input_pane(self, parent, title, start_command):
-        pane = ttk.LabelFrame(parent, text=title) # Reverted to default style
-        pane.text_widget_font = self.text_font # Store for later use if needed
+    def setup_dark_theme(self):
+        self.root.config(bg=DARK_THEME["background"])
+        self.style.theme_use('clam')
 
-        text_widget = Text(pane, wrap=tk.WORD, height=15, width=45, font=self.text_font, relief="solid", borderwidth=1) # Increased size, font, border
-        text_widget.pack(fill=tk.BOTH, expand=True, pady=(5,10)) # Added padding
+        # General widget styling
+        self.style.configure('.',
+                             background=DARK_THEME["background"],
+                             foreground=DARK_THEME["foreground"],
+                             fieldbackground=DARK_THEME["widget_bg"],
+                             selectbackground=DARK_THEME["accent"],
+                             selectforeground=DARK_THEME["foreground"])
+
+        # Frame and LabelFrame
+        self.style.configure("TFrame", background=DARK_THEME["background"])
+        self.style.configure("TLabelFrame",
+                             background=DARK_THEME["background"],
+                             foreground=DARK_THEME["foreground"],
+                             bordercolor=DARK_THEME["border"],
+                             relief='solid',
+                             borderwidth=1)
+        self.style.configure("TLabelFrame.Label",
+                             background=DARK_THEME["background"],
+                             foreground=DARK_THEME["accent"],
+                             font=self.title_font,
+                             padding=(0, 5))
+
+        # Button
+        self.style.configure("TButton",
+                             background=DARK_THEME["button_bg"],
+                             foreground=DARK_THEME["button_fg"],
+                             bordercolor=DARK_THEME["border"],
+                             font=self.button_font,
+                             padding=5,
+                             relief='raised')
+        self.style.map("TButton",
+                       background=[('active', DARK_THEME["button_hover"]), ('disabled', DARK_THEME["widget_bg"])],
+                       foreground=[('disabled', DARK_THEME["disabled_fg"])])
+
+        # Progress bar
+        self.style.configure("TProgressbar",
+                             background=DARK_THEME["progress_bar"],
+                             troughcolor=DARK_THEME["progress_trough"],
+                             bordercolor=DARK_THEME["border"],
+                             thickness=20)
+
+        # Labels
+        self.style.configure("TLabel",
+                             background=DARK_THEME["background"],
+                             foreground=DARK_THEME["foreground"],
+                             font=self.label_font)
+        self.style.configure("Progress.TLabel",
+                             background=DARK_THEME["background"],
+                             foreground=DARK_THEME["accent"],
+                             font=self.label_font)
+
+        # Scrollbar
+        self.style.configure("TScrollbar",
+                             background=DARK_THEME["widget_bg"],
+                             troughcolor=DARK_THEME["background"],
+                             bordercolor=DARK_THEME["border"],
+                             arrowcolor=DARK_THEME["foreground"],
+                             relief='flat')
+        self.style.map("TScrollbar",
+                       background=[('active', DARK_THEME["accent"])])
+
+        # Separator
+        self.style.configure("TSeparator", background=DARK_THEME["border"])
+
+        # Specific custom styles from original code, adapted for dark theme
+        self.style.configure("Custom.TButton",
+                             background=DARK_THEME["button_bg"],
+                             foreground=DARK_THEME["button_fg"],
+                             font=self.button_font,
+                             padding=5)
+        self.style.map("Custom.TButton",
+                       background=[('active', DARK_THEME["button_hover"]), ('disabled', DARK_THEME["widget_bg"])],
+                       foreground=[('disabled', DARK_THEME["disabled_fg"])])
+
+        # Ensure the main frame for the panes uses the dark theme background
+        # This might need to be applied to the main_frame directly if it's already created.
+        # self.main_frame.config(bg=DARK_THEME["background"]) # Example of direct configuration
+
+    def create_input_pane(self, parent, title, start_command):
+        pane = ttk.LabelFrame(parent, text=title, style="TLabelFrame")
+        pane.text_widget_font = self.text_font
+
+        text_widget = Text(pane, wrap=tk.WORD, height=15, width=45, font=self.text_font,
+                           background=DARK_THEME["text_bg"],
+                           foreground=DARK_THEME["text_fg"],
+                           insertbackground=DARK_THEME["text_insert"],
+                           selectbackground=DARK_THEME["accent"],
+                           selectforeground=DARK_THEME["text_fg"],
+                           relief="flat",
+                           highlightthickness=1,
+                           highlightcolor=DARK_THEME["border"],
+                           highlightbackground=DARK_THEME["background"],
+                           borderwidth=0)
+        text_widget.pack(fill=tk.BOTH, expand=True, pady=(5, 10))
         pane.text_widget = text_widget
 
         # Frame for buttons and progress
@@ -304,67 +399,50 @@ class ImportResultsWindow(Toplevel):
     def __init__(self, parent, results, action_queue, style_engine):
         super().__init__(parent)
         self.action_queue = action_queue
-        self.style = style_engine # Use the passed style engine
+        self.style = style_engine
         self.title(f"Import Results for '{results['deck_name']}'")
         self.transient(parent)
         self.grab_set()
-        self.geometry("850x650") # Slightly larger
+        self.geometry("850x650")
+        self.config(bg=DARK_THEME["background"])
 
         # Use app's fonts
-        self.title_font = font.Font(family="Helvetica", size=12, weight="bold") # Slightly smaller for sections
+        self.title_font = font.Font(family="Helvetica", size=12, weight="bold")
         self.label_font = font.Font(family="Arial", size=10)
-        self.button_font = font.Font(family="Arial", size=9) # Smaller for action buttons
+        self.button_font = font.Font(family="Arial", size=9)
         self.text_font = font.Font(family="Arial", size=10)
 
-
-        main_frame = ttk.Frame(self, padding=15) # Increased padding
+        main_frame = ttk.Frame(self, padding=15, style="TFrame")
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Style configurations for this window
-        # Removing ResultsWindow.TLabelFrame custom style attempt
-        # self.style.configure("ResultsWindow.TLabelFrame", padding=8)
-        # self.style.configure("ResultsWindow.TLabelFrame.Label", font=self.title_font, padding=(0,4)) # This would need to target default TLabelFrame.Label
-
-        # If main app's TLabelFrame.Label is styled, it might apply here too, or we can be specific if needed.
-        # For now, let ImportResultsWindow use the global "TLabelFrame.Label" style if defined, or default.
-        # If specific styling for ResultsWindow LabelFrame labels is needed, it would be:
-        # self.style.configure("ResultsLabel.TLabelFrame.Label", font=self.title_font)
-        # And then apply style="ResultsLabel.TLabelFrame" to those labelframes.
-        # For now, relying on global TLabelFrame.Label or default.
-
-        # Keeping ResultsWindow.TButton for now, assuming it's less problematic.
-        # If Custom.TButton from main app is intended, could pass that style name.
-        # Or define a specific one if different:
-        try:
-            # Base ResultsWindow.TButton on the app's Custom.TButton if available, else TButton
-            base_button_style = "Custom.TButton"
-            try:
-                self.style.layout(base_button_style) # Check if Custom.TButton exists
-            except tk.TclError:
-                base_button_style = "TButton" # Fallback to base TButton
-
-            current_btn_layout = self.style.layout(base_button_style)
-            if current_btn_layout:
-                self.style.layout("ResultsWindow.TButton", current_btn_layout)
-        except tk.TclError as e:
-            logger.warning(f"Could not copy layout for ResultsWindow.TButton: {e}")
-
-        self.style.configure("ResultsWindow.TButton", font=self.button_font, padding=3)
-        self.style.configure("ResultsWindow.Header.TLabel", font=font.Font(family="Helvetica", size=11, weight="bold"))
-        # Note: ResultsWindow.Header.TLabel is a TLabel, which usually doesn't require complex layout copying like LabelFrame.
+        # Specific styles for this window
+        self.style.configure("ResultsWindow.TButton",
+                             font=self.button_font,
+                             padding=3,
+                             background=DARK_THEME["button_bg"],
+                             foreground=DARK_THEME["button_fg"])
+        self.style.map("ResultsWindow.TButton",
+                       background=[('active', DARK_THEME["button_hover"])])
+        self.style.configure("ResultsWindow.Header.TLabel",
+                             font=font.Font(family="Helvetica", size=11, weight="bold"),
+                             background=DARK_THEME["background"],
+                             foreground=DARK_THEME["accent"])
 
         counts = results['counts']
-        summary_text = (f"Import Summary for '{results['deck_name']}':\n" + "\n".join([f"  - {k.capitalize()}: {v}" for k, v in counts.items()]))
-        ttk.Label(main_frame, text=summary_text, justify=tk.LEFT, font=self.label_font, style="ResultsWindow.Header.TLabel").pack(anchor='w', pady=(0,10))
+        summary_text = (
+            f"Import Summary for '{results['deck_name']}':\n" +
+            "\n".join([f"  - {k.capitalize()}: {v}" for k, v in counts.items()])
+        )
+        ttk.Label(main_frame, text=summary_text, justify=tk.LEFT, style="ResultsWindow.Header.TLabel").pack(anchor='w', pady=(0, 10))
         ttk.Separator(main_frame, orient='horizontal').pack(fill='x', pady=10)
 
         # Main scrollable area
-        canvas_frame = ttk.Frame(main_frame)
+        canvas_frame = ttk.Frame(main_frame, style="TFrame")
         canvas_frame.pack(fill=tk.BOTH, expand=True)
 
-        canvas = tk.Canvas(canvas_frame, borderwidth=0, highlightthickness=0) # Removed default border
-        scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas, padding=(10,0)) # Add padding inside scrollable area
+        canvas = tk.Canvas(canvas_frame, bg=DARK_THEME["background"], borderwidth=0, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview, style="TScrollbar")
+        scrollable_frame = ttk.Frame(canvas, style="TFrame", padding=(10, 0))
 
         scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
@@ -373,107 +451,93 @@ class ImportResultsWindow(Toplevel):
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-
         if results.get('skipped_cards'):
-            # Using default TLabelFrame, custom styling for its label will be via "TLabelFrame.Label" if set globally
-            skipped_outer_frame = ttk.LabelFrame(scrollable_frame, text="Skipped Cards (Duplicates)", padding=10)
+            skipped_outer_frame = ttk.LabelFrame(scrollable_frame, text="Skipped Cards (Duplicates)", padding=10, style="TLabelFrame")
             skipped_outer_frame.pack(fill=tk.X, expand=True, padx=5, pady=5)
             for card in results['skipped_cards']:
                 self.create_skipped_card_frame(skipped_outer_frame, card)
 
         if results.get('failed_cards'):
             self.create_simple_list_frame(scrollable_frame, "Failed to Add to Anki", results['failed_cards'],
-                                          lambda card: f"Line: {card.get('line', card.get('front'))}") # Removed style_name
+                                          lambda card: f"Line: {card.get('line', card.get('front'))}")
 
         if results.get('unparsable_lines'):
             self.create_simple_list_frame(scrollable_frame, "Unparsable Lines", results['unparsable_lines'],
-                                          lambda line: f"Line: {line.strip()}") # Removed style_name
+                                          lambda line: f"Line: {line.strip()}")
 
-    def create_simple_list_frame(self, parent, title, items, formatter): # Removed style_name from signature
-        # Using default TLabelFrame, custom styling for its label will be via "TLabelFrame.Label" if set globally
-        frame = ttk.LabelFrame(parent, text=title, padding=10)
-        frame.pack(fill=tk.X, expand=True, padx=5, pady=(10,5)) # Added more vertical padding
+    def create_simple_list_frame(self, parent, title, items, formatter):
+        frame = ttk.LabelFrame(parent, text=title, padding=10, style="TLabelFrame")
+        frame.pack(fill=tk.X, expand=True, padx=5, pady=(10, 5))
 
-        # Use a Text widget for better layout and potential scrollability if needed, but keep it simple
-        # For better visual appeal, use a Label per item or a more structured list (TreeView) for many items.
-        # Here, sticking to Text for simplicity of change, but with font.
         text_content = "\n".join(formatter(item) for item in items)
-
-        # If many items, consider a scrollbar for this specific text widget too.
-        # For now, just make it expand and rely on main scrollbar. Max height to keep it from being too tall.
-        height = min(len(items) + 1, 8) # +1 for a bit of space, max 8 lines visible initially
+        height = min(len(items) + 1, 8)
         text_widget = Text(frame, wrap=tk.WORD, height=height, font=self.text_font,
-                           relief=tk.SOLID, borderwidth=1, padx=5, pady=5) # Added padding inside Text
+                           relief="flat", borderwidth=0, padx=5, pady=5,
+                           background=DARK_THEME["readonly_bg"],
+                           foreground=DARK_THEME["text_fg"],
+                           highlightthickness=0)
         text_widget.insert("1.0", text_content)
-        text_widget.config(state=tk.DISABLED, bg="#f0f0f0") # Light gray background for read-only
-        text_widget.pack(fill=tk.X, expand=True, pady=(5,0))
-
+        text_widget.config(state=tk.DISABLED)
+        text_widget.pack(fill=tk.X, expand=True, pady=(5, 0))
 
     def create_skipped_card_frame(self, parent, card_data):
-        # Using a standard Frame here for tighter packing, style applied to parent LabelFrame
-        card_frame = ttk.Frame(parent, padding=(5,8), relief="groove", borderwidth=1) # Added border and more padding
+        card_frame = ttk.Frame(parent, padding=(5, 8), style="TFrame", relief="groove", borderwidth=1)
         card_frame.pack(fill=tk.X, padx=5, pady=5, expand=True)
 
-        # Card Front as a header for this small section
         front_text = f"Card: {card_data['front']}"
         if card_data.get('duplicate_deck_name') and card_data['duplicate_deck_name'] != card_data['deck_name']:
             front_text += f" (Duplicate in deck: '{card_data['duplicate_deck_name']}')"
-        front_label = ttk.Label(card_frame, text=front_text, font=font.Font(family="Arial", size=10, weight="bold"))
-        front_label.pack(anchor="w", pady=(0,5))
+        front_label = ttk.Label(card_frame, text=front_text, font=font.Font(family="Arial", size=10, weight="bold"),
+                                background=DARK_THEME["background"], foreground=DARK_THEME["accent"])
+        front_label.pack(anchor="w", pady=(0, 5))
 
-        content_frame = ttk.Frame(card_frame)
-        content_frame.pack(fill=tk.X, expand=True, pady=(0,8)) # Adjusted padding
+        content_frame = ttk.Frame(card_frame, style="TFrame")
+        content_frame.pack(fill=tk.X, expand=True, pady=(0, 8))
 
         # Current Back
-        ttk.Label(content_frame, text="Current Back in Anki / Reason:", font=self.label_font).grid(row=0, column=0, sticky='nw', pady=(0,2))
-        current_back_text = Text(content_frame, wrap=tk.WORD, height=3, width=35, font=self.text_font, relief="flat", bg=self.cget('bg'))
+        ttk.Label(content_frame, text="Current Back in Anki / Reason:", font=self.label_font).grid(row=0, column=0, sticky='nw', pady=(0, 2))
+        current_back_text = Text(content_frame, wrap=tk.WORD, height=3, width=35, font=self.text_font,
+                                 relief="flat", bg=DARK_THEME["background"], fg=DARK_THEME["foreground"],
+                                 highlightthickness=0)
         current_back_text.insert("1.0", card_data['back_old'])
         current_back_text.config(state=tk.DISABLED)
         current_back_text.grid(row=1, column=0, sticky='nsew', pady=(0, 10))
 
         # New Back
-        ttk.Label(content_frame, text="New Back from Input:", font=self.label_font).grid(row=0, column=1, sticky='nw', padx=(15, 0), pady=(0,2))
-        new_back_text = Text(content_frame, wrap=tk.WORD, height=3, width=35, font=self.text_font, relief="flat", bg=self.cget('bg'))
+        ttk.Label(content_frame, text="New Back from Input:", font=self.label_font).grid(row=0, column=1, sticky='nw', padx=(15, 0), pady=(0, 2))
+        new_back_text = Text(content_frame, wrap=tk.WORD, height=3, width=35, font=self.text_font,
+                             relief="flat", bg=DARK_THEME["background"], fg=DARK_THEME["foreground"],
+                             highlightthickness=0)
         new_back_text.insert("1.0", card_data['back_new'])
         new_back_text.config(state=tk.DISABLED)
         new_back_text.grid(row=1, column=1, sticky='nsew', padx=(15, 0), pady=(0, 10))
 
-        content_frame.grid_columnconfigure(0, weight=1, minsize=200) # Ensure columns have minsize
+        content_frame.grid_columnconfigure(0, weight=1, minsize=200)
         content_frame.grid_columnconfigure(1, weight=1, minsize=200)
 
         if card_data.get('note_id'):
-            action_frame = ttk.Frame(card_frame)
-            action_frame.pack(fill=tk.X, pady=(5,0))
+            action_frame = ttk.Frame(card_frame, style="TFrame")
+            action_frame.pack(fill=tk.X, pady=(5, 0))
             buttons = []
 
             def run_task_in_thread(target_func, *args):
                 for btn in buttons:
                     if btn.winfo_exists(): btn.config(state=tk.DISABLED)
-                # Show some visual feedback on the button or frame itself
-                # e.g., card_frame.config(relief="sunken")
 
                 def worker():
                     try:
                         target_func(*args)
-                        # Remove the specific card frame on success
                         self.action_queue.put({"type": "destroy_widget", "widget": card_frame})
                     except Exception:
                         logger.error("Exception in skipped card action thread", exc_info=True)
-                        # Re-enable buttons on error if the frame is not destroyed
                         if card_frame.winfo_exists():
                             for btn_ in buttons:
                                 if btn_.winfo_exists(): btn_.config(state=tk.NORMAL)
-                            # card_frame.config(relief="groove") # Reset relief
-                    finally:
-                        # If the frame is destroyed, no need to re-enable,
-                        # otherwise, ensure buttons are re-enabled if an error occurred and frame still exists
-                        pass
-
 
                 threading.Thread(target=worker, daemon=True).start()
 
             def on_append():
-                updated_back = f"{card_data['back_old']}<br><hr>{card_data['back_new']}" # Added <hr> for visual separation
+                updated_back = f"{card_data['back_old']}<br><hr>{card_data['back_new']}"
                 anki_utils.update_note_fields(card_data['note_id'], {"Back": updated_back})
                 anki_utils.reset_cards([card_data['note_id']])
 
@@ -486,7 +550,6 @@ class ImportResultsWindow(Toplevel):
 
             def on_modify():
                 anki_utils.open_editor_for_note(card_data['note_id'])
-                # Resetting after modification might be desired if changes were made to scheduling
                 anki_utils.reset_cards([card_data['note_id']])
 
             def on_force_add():
@@ -498,16 +561,15 @@ class ImportResultsWindow(Toplevel):
                 }
                 anki_utils.add_note_single(note_to_add)
 
-            # Using ttk.Button and applying style
             append_btn = ttk.Button(action_frame, text="Append & Reset", command=lambda: run_task_in_thread(on_append), style="ResultsWindow.TButton")
             replace_btn = ttk.Button(action_frame, text="Replace & Reset", command=lambda: run_task_in_thread(on_replace), style="ResultsWindow.TButton")
             reset_btn = ttk.Button(action_frame, text="Just Reset", command=lambda: run_task_in_thread(on_reset), style="ResultsWindow.TButton")
             modify_btn = ttk.Button(action_frame, text="Modify & Reset", command=lambda: run_task_in_thread(on_modify), style="ResultsWindow.TButton")
             force_add_btn = ttk.Button(action_frame, text="Force Add New", command=lambda: run_task_in_thread(on_force_add), style="ResultsWindow.TButton")
 
-
             buttons.extend([append_btn, replace_btn, reset_btn, modify_btn, force_add_btn])
-            for btn in buttons: btn.pack(side=tk.LEFT, padx=(0,8)) # Adjusted padding
+            for btn in buttons:
+                btn.pack(side=tk.LEFT, padx=(0, 8))
 
 
 if __name__ == "__main__":
