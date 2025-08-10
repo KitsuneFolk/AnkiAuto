@@ -2,7 +2,7 @@ import logging
 import queue
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox, Toplevel, Button, Text, font
+from tkinter import ttk, messagebox, Toplevel, Text, font
 
 import anki_utils
 import config
@@ -42,7 +42,7 @@ class AnkiImporterApp:
         self.style = ttk.Style()
 
         # Define custom fonts
-        self.title_font = font.Font(family="Helvetica", size=15, weight="bold") # Increased size
+        self.title_font = font.Font(family="Helvetica", size=15, weight="bold")  # Increased size
         self.label_font = font.Font(family="Arial", size=10)
         self.button_font = font.Font(family="Arial", size=10, weight="bold")
         self.text_font = font.Font(family="Arial", size=10)
@@ -218,6 +218,89 @@ class AnkiImporterApp:
         pane.progress_bar["value"] = 0 # Reset progress bar
         pane.progress_bar["maximum"] = 100 # Default max for stages before card processing
 
+    def _parse_lines(self, lines, parser_func, tag_func):
+        parsed_cards = []
+        unparsable_lines = []
+        for line in lines:
+            front, back, tag_suffix = parser_func(line)
+            if front and back:
+                parsed_cards.append({
+                    "front": front, "back": back, "tags": tag_func(tag_suffix), "line": line.strip()
+                })
+            else:
+                unparsable_lines.append(line)
+        return parsed_cards, unparsable_lines
+
+    def _check_for_duplicates(self, parsed_cards, deck_name, existing_notes_map):
+        notes_to_add = []
+        source_lines_for_notes_to_add = []
+        skipped_cards = []
+        fronts_for_bulk_add = set()
+
+        for card in parsed_cards:
+            front = card["front"]
+            if front in existing_notes_map:
+                existing_info = existing_notes_map[front]
+                card_data = {
+                    "front": front, "back_new": card["back"],
+                    "note_id": existing_info["noteId"],
+                    "back_old": existing_info["fields"]["Back"]["value"],
+                    "tags": card["tags"],
+                    "deck_name": deck_name,
+                    "duplicate_deck_name": existing_info.get("deckName")
+                }
+                skipped_cards.append(card_data)
+                continue
+
+            if front in fronts_for_bulk_add:
+                logger.info(f"Skipping card '{front}' as it is a duplicate within the input batch.")
+                card_data = {
+                    "front": front, "back_new": card["back"],
+                    "note_id": None, "back_old": "[Duplicate in this import session]"
+                }
+                skipped_cards.append(card_data)
+                continue
+
+            fronts_for_bulk_add.add(front)
+            note = {
+                "deckName": deck_name, "modelName": config.MODEL_NAME,
+                "fields": {"Front": front, "Back": card["back"]},
+                "options": {"allowDuplicate": False}, "tags": card["tags"]
+            }
+            notes_to_add.append(note)
+            source_lines_for_notes_to_add.append(card['line'])
+
+        return notes_to_add, source_lines_for_notes_to_add, skipped_cards
+
+    def _add_new_notes(self, notes_to_add, source_lines):
+        if not notes_to_add:
+            return {"added": 0, "failed": 0}, []
+
+        add_results = anki_utils.add_notes_bulk(notes_to_add)
+        failed_cards = []
+        counts = {"added": 0, "failed": 0}
+
+        if add_results and add_results.get("result"):
+            results_list = add_results["result"]
+            counts["added"] = sum(1 for r in results_list if r is not None)
+            if None in results_list:
+                for i, result_id in enumerate(results_list):
+                    if result_id is None:
+                        counts["failed"] += 1
+                        failed_note_data = notes_to_add[i]
+                        original_line = source_lines[i]
+                        logger.warning(
+                            f"A single card failed to add inside a batch. Front: '{failed_note_data['fields']['Front']}'. Original line: '{original_line}'")
+                        failed_cards.append({"front": failed_note_data['fields']['Front'],
+                                             "back": failed_note_data['fields']['Back'], "line": original_line})
+        elif notes_to_add:
+            anki_error = add_results.get('error', 'Response was empty or malformed.') if add_results else "Connection to Anki failed."
+            logger.error(f"The entire bulk 'addNotes' request failed. AnkiConnect error: {anki_error}")
+            counts["failed"] = len(notes_to_add)
+            failed_cards = [{"front": n["fields"]["Front"], "back": n["fields"]["Back"], "line": source_lines[idx]} for idx, n in enumerate(notes_to_add)]
+
+        return counts, failed_cards
+
     def _import_worker(self, deck_config, lines, q):
         deck_name = deck_config["deck_name"]
         parser_func = getattr(parsers, deck_config["parser_func_name"])
@@ -225,116 +308,34 @@ class AnkiImporterApp:
         total_lines = len(lines)
 
         try:
-            q.put({"type": "progress_update", "deck_name": deck_name, "value": 5, "text": "Checking deck..."})
+            q.put({"type": "progress", "deck_name": deck_name, "value": 5, "text": "Checking deck..."})
             if not anki_utils.ensure_deck_exists(deck_name):
                 q.put({"type": "error", "deck_name": deck_name, "message": f"Could not create/find deck: {deck_name}"})
                 return
 
-            q.put({"type": "progress_update", "deck_name": deck_name, "value": 15, "text": f"Parsing {total_lines} lines..."})
-            parsed_cards = []
-            unparsable_lines = []
-            # Update progress bar during parsing if it's a long list
-            # For simplicity, we'll do a single update after parsing, but for very large lists,
-            # this could be done incrementally.
-            for i, line in enumerate(lines):
-                front, back, tag_suffix = parser_func(line)
-                if front and back:
-                    parsed_cards.append({
-                        "front": front, "back": back, "tags": tag_func(tag_suffix), "line": line.strip()
-                    })
-                else:
-                    unparsable_lines.append(line)
-                # q.put({"type": "progress_update", "deck_name": deck_name,
-                #        "value": 15 + int(35 * (i + 1) / total_lines),  # Parsing takes up to 50% (15 to 50)
-                #        "text": f"Parsing line {i+1}/{total_lines}"})
+            q.put({"type": "progress", "deck_name": deck_name, "value": 15, "text": f"Parsing {total_lines} lines..."})
+            parsed_cards, unparsable_lines = self._parse_lines(lines, parser_func, tag_func)
 
-
-            q.put({"type": "progress_update", "deck_name": deck_name, "value": 50,
-                   "text": f"Checking {len(parsed_cards)} for duplicates..."})
+            q.put({"type": "progress", "deck_name": deck_name, "value": 50, "text": f"Checking {len(parsed_cards)} for duplicates..."})
             all_fronts = [card["front"] for card in parsed_cards]
-            existing_notes_map = anki_utils.get_info_for_existing_notes(deck_name, all_fronts)
+            existing_notes_map = anki_utils.get_info_for_existing_notes(all_fronts)
 
-            notes_to_add = []
-            source_lines_for_notes_to_add = [] # Stores original lines for notes_to_add
-            skipped_cards = []
-            # Use a set to track fronts for this batch to prevent intra-batch duplicates
-            fronts_for_bulk_add = set()
+            notes_to_add, source_lines, skipped_cards = self._check_for_duplicates(parsed_cards, deck_name, existing_notes_map)
 
-            for card in parsed_cards:
-                front = card["front"]
-                # Case 1: Card already exists in Anki
-                if front in existing_notes_map:
-                    existing_info = existing_notes_map[front]
-                    card_data = {
-                        "front": front, "back_new": card["back"],
-                        "note_id": existing_info["noteId"],
-                        "back_old": existing_info["fields"]["Back"]["value"],
-                        "tags": card["tags"],
-                        "deck_name": deck_name,
-                        "duplicate_deck_name": existing_info.get("deckName")
-                    }
-                    skipped_cards.append(card_data)
-                    continue
+            q.put({"type": "progress", "deck_name": deck_name, "value": 65, "text": f"Adding {len(notes_to_add)} new cards..."})
+            add_counts, failed_cards = self._add_new_notes(notes_to_add, source_lines)
 
-                # Case 2: Card is a duplicate within the input itself
-                if front in fronts_for_bulk_add:
-                    logger.info(f"Skipping card '{front}' as it is a duplicate within the input batch.")
-                    card_data = {
-                        "front": front, "back_new": card["back"],
-                        "note_id": None, "back_old": "[Duplicate in this import session]"
-                    }
-                    skipped_cards.append(card_data)
-                    continue
+            q.put({"type": "progress", "deck_name": deck_name, "value": 95, "text": "Finalizing..."})
 
-                # Case 3: This is a new, unique card to be added
-                fronts_for_bulk_add.add(front)
-                note = {
-                    "deckName": deck_name, "modelName": config.MODEL_NAME,
-                    "fields": {"Front": front, "Back": card["back"]},
-                    "options": {"allowDuplicate": False}, "tags": card["tags"]
-                }
-                notes_to_add.append(note)
-                source_lines_for_notes_to_add.append(card['line'])
-
-            # Update progress before adding notes
-            # Adding notes can be slow, so this stage gets a good chunk of progress bar time
-            q.put({"type": "progress_update", "deck_name": deck_name, "value": 65, "text": f"Adding {len(notes_to_add)} new cards..."})
-            add_results = anki_utils.add_notes_bulk(notes_to_add)
-            # After adding, jump progress significantly
-            q.put({"type": "progress_update", "deck_name": deck_name, "value": 95, "text": "Finalizing..."})
-
-
-            counts = {"added": 0, "skipped": len(skipped_cards), "failed": 0, "unparsable": len(unparsable_lines)}
-            failed_cards = []
-            if add_results and add_results.get("result"):
-                results_list = add_results["result"]
-                counts["added"] = sum(1 for r in results_list if r is not None)
-                # AnkiConnect's addNotes can return None for individual notes in a batch if they
-                # fail to import (e.g., due to errors or if allowDuplicate=false and it's a
-                # duplicate within the batch). This logic handles such individual failures.
-                if None in results_list:
-                    for i, result_id in enumerate(results_list):
-                        if result_id is None:
-                            counts["failed"] += 1
-                            failed_note_data = notes_to_add[i]
-                            original_line = source_lines_for_notes_to_add[i]
-                            logger.warning(
-                                f"A single card failed to add inside a batch. Front: '{failed_note_data['fields']['Front']}'. Original line: '{original_line}'")
-                            failed_cards.append({"front": failed_note_data['fields']['Front'],
-                                                 "back": failed_note_data['fields']['Back'], "line": original_line})
-
-            elif notes_to_add and not (add_results and add_results.get("result")):
-                anki_error = add_results.get('error',
-                                             'Response was empty or malformed.') if add_results else "Connection to Anki failed."
-                logger.error(f"The entire bulk 'addNotes' request failed. AnkiConnect error: {anki_error}")
-                counts["failed"] = len(notes_to_add)
-                failed_cards = [{"front": n["fields"]["Front"],
-                                 "back": n["fields"]["Back"],
-                                 "line": source_lines_for_notes_to_add[idx]}
-                                for idx, n in enumerate(notes_to_add)]
+            final_counts = {
+                "added": add_counts["added"],
+                "skipped": len(skipped_cards),
+                "failed": add_counts["failed"],
+                "unparsable": len(unparsable_lines)
+            }
 
             q.put({
-                "type": "complete", "deck_name": deck_name, "counts": counts,
+                "type": "complete", "deck_name": deck_name, "counts": final_counts,
                 "skipped_cards": skipped_cards, "failed_cards": failed_cards, "unparsable_lines": unparsable_lines
             })
 
@@ -346,8 +347,9 @@ class AnkiImporterApp:
     def process_import_queue(self):
         try:
             msg = self.import_queue.get(block=False)
+            msg_type = msg.get("type")
 
-            if msg["type"] == "destroy_widget":
+            if msg_type == "destroy_widget":
                 widget = msg.get("widget")
                 if widget and widget.winfo_exists():
                     widget.destroy()
@@ -360,27 +362,26 @@ class AnkiImporterApp:
 
             pane = self.panes_by_deck_name[deck_name]
 
-            if msg["type"] == "progress_update":
+            if msg_type == "progress":
                 pane.progress_label.config(text=msg["text"])
                 if "value" in msg:
                     pane.progress_bar["value"] = msg["value"]
-            elif msg["type"] == "complete":
+            elif msg_type == "complete":
                 logger.info(f"Import complete for '{deck_name}'. Results: {msg['counts']}")
                 pane.start_button.config(state=tk.NORMAL)
                 pane.progress_label.config(text="Done!")
-                pane.progress_bar["value"] = 100 # Ensure it shows full
+                pane.progress_bar["value"] = 100
 
                 has_issues = msg["skipped_cards"] or msg.get("failed_cards") or msg.get("unparsable_lines")
                 if has_issues:
-                    ImportResultsWindow(self.root, msg, self.import_queue, self.style) # Pass style
+                    ImportResultsWindow(self.root, msg, self.import_queue, self.style)
                 else:
                     summary = f"Import for '{msg['deck_name']}' complete!\n\n" + "\n".join(
                         [f"{k.capitalize()}: {v}" for k, v in msg['counts'].items()])
                     messagebox.showinfo("Import Complete", summary)
-                # Consider resetting progress bar after a delay or on next action
                 self.root.after(3000, lambda p=pane: self.reset_progress(p) if p.winfo_exists() else None)
 
-            elif msg["type"] == "error":
+            elif msg_type == "error":
                 logger.error(f"Received error message for pane '{deck_name}': {msg['message']}")
                 messagebox.showerror("Error", msg["message"])
                 pane.start_button.config(state=tk.NORMAL)

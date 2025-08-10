@@ -38,50 +38,57 @@ def ensure_deck_exists(deck_name):
     return True
 
 
-def get_info_for_existing_notes(deck_name, front_texts):
+def _build_find_notes_query(front_texts):
+    """Builds the query string for finding notes by their 'Front' field."""
+    escaped_fronts = [f.replace('"', '\\"') for f in front_texts]
+    return " or ".join(f'"Front:{f}"' for f in escaped_fronts)
+
+
+def _fetch_notes_info(note_ids):
+    """Fetches and returns the information for a list of note IDs."""
+    if not note_ids:
+        return []
+    info_response = anki_request("notesInfo", notes=note_ids)
+    return info_response.get("result", []) if info_response else []
+
+
+def _map_deck_names_to_notes(notes_info):
+    """Fetches deck names for notes and adds them to the note info dictionaries."""
+    all_card_ids = [info['cards'][0] for info in notes_info if info.get('cards')]
+    if not all_card_ids:
+        return
+
+    cards_info_response = anki_request("cardsInfo", cards=all_card_ids)
+    if not cards_info_response or not cards_info_response.get("result"):
+        return
+
+    card_id_to_deck = {info['cardId']: info['deckName'] for info in cards_info_response['result']}
+    for info in notes_info:
+        if info.get('cards'):
+            first_card_id = info['cards'][0]
+            if first_card_id in card_id_to_deck:
+                info['deckName'] = card_id_to_deck[first_card_id]
+
+
+def get_info_for_existing_notes(front_texts):
     """
-    Finds all existing notes in a deck that match a list of front fields.
+    Finds all existing notes that match a list of front fields.
     Returns a dictionary mapping front_text -> note_info for fast lookups.
     """
     if not front_texts:
         return {}
 
-    # Escape quotes in front text for the query
-    escaped_fronts = [f.replace('"', '\\"') for f in front_texts]
-    query = f'("Front:{escaped_fronts[0]}"'
-    for f in escaped_fronts[1:]:
-        query += f' or "Front:{f}"'
-    query += ')'
-
+    query = _build_find_notes_query(front_texts)
     find_response = anki_request("findNotes", query=query)
     if not find_response or not find_response.get("result"):
         return {}
 
     existing_note_ids = find_response["result"]
-    info_response = anki_request("notesInfo", notes=existing_note_ids)
+    notes_info = _fetch_notes_info(existing_note_ids)
 
-    if not info_response or not info_response.get("result"):
-        return {}
+    _map_deck_names_to_notes(notes_info)
 
-    notes_info = info_response['result']
-
-    # Get the deck name for each note by checking its first card
-    all_card_ids = [info['cards'][0] for info in notes_info if info.get('cards')]
-    if all_card_ids:
-        cards_info_response = anki_request("cardsInfo", cards=all_card_ids)
-        if cards_info_response and cards_info_response.get("result"):
-            card_id_to_deck = {info['cardId']: info['deckName'] for info in cards_info_response['result']}
-            for info in notes_info:
-                if info.get('cards'):
-                    first_card_id = info['cards'][0]
-                    if first_card_id in card_id_to_deck:
-                        info['deckName'] = card_id_to_deck[first_card_id]
-
-    # Create a lookup map: {front_text: note_info}
-    return {
-        info['fields']['Front']['value']: info
-        for info in notes_info
-    }
+    return {info['fields']['Front']['value']: info for info in notes_info}
 
 
 def add_notes_bulk(notes_to_add):
@@ -99,9 +106,6 @@ def add_note_single(note_to_add):
     Adds a single note, allowing duplicates.
     A wrapper for the 'addNote' action with allowDuplicate=True.
     """
-    if not note_to_add:
-        return None
-
     # Ensure the note payload includes the allowDuplicate option
     note_payload = note_to_add.copy()
     note_payload.setdefault('options', {})['allowDuplicate'] = True
@@ -151,15 +155,19 @@ import time
 def get_anki_executable_path():
     """Tries to find the Anki executable path for the current OS."""
     if sys.platform == "win32":
-        # Common paths for Windows
         possible_paths = [
-            os.path.join(os.environ["ProgramFiles"], "Anki", "anki.exe"),
-            os.path.join(os.environ["ProgramFiles(x86)"], "Anki", "anki.exe"),
-            os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'Anki', 'anki.exe'),
+            os.path.join(os.environ.get("ProgramFiles", ""), "Anki", "anki.exe"),
+            os.path.join(os.environ.get("ProgramFiles(x86)", ""), "Anki", "anki.exe"),
+            os.path.join(os.environ.get("LOCALAPPDATA", ""), 'Programs', 'Anki', 'anki.exe'),
         ]
-        for path in possible_paths:
-            if os.path.exists(path):
-                return path
+    elif sys.platform == "darwin":
+        possible_paths = ["/Applications/Anki.app/Contents/MacOS/Anki"]
+    else:  # Linux
+        possible_paths = ["/usr/bin/anki", "/usr/local/bin/anki"]
+
+    for path in possible_paths:
+        if path and os.path.exists(path):
+            return path
     return None
 
 
@@ -171,7 +179,7 @@ def launch_anki():
             subprocess.Popen([anki_path])
             logger.info(f"Launched Anki from: {anki_path}")
             # Wait for Anki to start up
-            time.sleep(2)
+            time.sleep(5)
             return True
         except Exception as e:
             logger.error(f"Failed to launch Anki: {e}")

@@ -3,96 +3,79 @@ import re
 import config
 
 
+# Defining Japanese character class as a constant for reuse.
+JP_CHAR_CLASS = r'[\u3040-\u30FF\u4e00-\u9fff\u3002\u3001\u300C\u300D\u3005]'
+
+
+def _parse_kanji_line(line):
+    """Handles parsing of lines in the format: (Kanji) reading..."""
+    match = re.match(r'^(\(.+?\))\s*(.+)$', line)
+    if match:
+        return match.group(1).strip(), match.group(2).strip(), config.PASSIVE_KANJI_TAG
+    return None, None, None
+
+
+def _parse_vocab_line(line):
+    """
+    Handles parsing of lines in the format: Japanese_word English_definition
+    - The back part must start with a non-Japanese, non-space character.
+    - Special comma handling: if a comma is followed by Japanese text, the entire text after the comma is included.
+    """
+    # Regex to capture Japanese front and the rest of the line.
+    vocab_pattern = re.compile(
+        r'^(' + JP_CHAR_CLASS + r'+)'  # Group 1: Japanese front
+        r'(\s*[^ \s' + JP_CHAR_CLASS.replace('[', '').replace(']', '') + r'].*)$'  # Group 2: Potential back
+    )
+    match = vocab_pattern.match(line)
+    if not match:
+        return None, None, None
+
+    front_text = match.group(1).strip()
+    potential_back = match.group(2).strip()
+    final_back = ""
+
+    # Check for the comma rule.
+    comma_match = re.search(r'[,、]', potential_back)
+    if comma_match:
+        comma_idx = comma_match.start()
+        text_after_comma = potential_back[comma_idx + 1:]
+        if re.search(JP_CHAR_CLASS, text_after_comma):
+            final_back = potential_back
+        else:
+            # Fall through to accumulate non-Japanese characters if comma rule doesn't apply.
+            pass
+
+    if not final_back:
+        accumulated_chars = []
+        for char in potential_back:
+            if not re.match(JP_CHAR_CLASS, char):
+                accumulated_chars.append(char)
+            else:
+                break  # Stop at the first Japanese character.
+        final_back = "".join(accumulated_chars).strip()
+
+    return (front_text, final_back, None) if final_back else (None, None, None)
+
+
 def parse_passive_line(line):
     """
-    Parses a line.
-    Handles two primary formats:
+    Parses a line for passive cards, dispatching to specific parsers.
+    Handles two formats:
     1) (摯)... -> Kanji card with special tag.
-    2) ばらまきspending (money) recklessly -> Vocab card.
+    2) ばらまき spending (money) recklessly -> Vocab card.
     Returns: (front, back, card_type_tag_suffix)
     """
     line = line.strip()
     if not line:
         return None, None, None
 
-    # Check for the specific Kanji format first: (Kanji) reading...
-    match_kanji_format = re.match(r'^(\(.+?\))\s*(.+)$', line)
-    if match_kanji_format:
-        front = match_kanji_format.group(1).strip()
-        back = match_kanji_format.group(2).strip()
-        return front, back, config.PASSIVE_KANJI_TAG
+    # Try parsing as a Kanji card first.
+    front, back, tag = _parse_kanji_line(line)
+    if front:
+        return front, back, tag
 
-    # Vocabulary card parsing:
-    # 1. Front part must be Japanese characters (including specified punctuation).
-    # 2. Back part must start with a non-Japanese, non-space character.
-    # 3. Special handling for commas in the back part: if a comma is followed by Japanese text,
-    #    the entire text after the comma is included in the back.
-    # 4. Otherwise, the back part consists of non-Japanese characters, stopping at the first Japanese character.
-
-    jp_char_class = r'[\u3040-\u30FF\u4e00-\u9fff\u3002\u3001\u300C\u300D\u3005]'
-    # Regex to capture Japanese front and the rest of the line if it starts with a non-Japanese, non-space char
-    vocab_pattern_initial_split = re.compile(
-        r'^(' + jp_char_class + r'+)'  # Group 1: Japanese front part
-        r'(\s*[^ \s' + jp_char_class.replace('[', '').replace(']', '') + r'].*)$'  # Group 2: Potential back part
-    )
-    match_vocab = vocab_pattern_initial_split.match(line)
-
-    if match_vocab:
-        front_text = match_vocab.group(1).strip()
-        potential_back_text = match_vocab.group(2).strip()
-        final_back_text = ""
-
-        # Check for comma rule: "text_before_comma , japanese_text_after_comma"
-        # Find the first comma (English or Japanese)
-        comma_idx = -1
-        first_comma_char = None
-        for i, char_code in enumerate(potential_back_text):
-            if char_code == ',' or char_code == '、':
-                comma_idx = i
-                first_comma_char = char_code
-                break
-
-        if comma_idx != -1:
-            text_after_comma = potential_back_text[comma_idx + 1:]
-            # If text after comma contains any Japanese character, take the whole potential_back_text
-            if re.search(jp_char_class, text_after_comma):
-                final_back_text = potential_back_text
-            else:
-                # Comma not followed by Japanese text, treat as normal character.
-                # Fall through to character-by-character accumulation for the part before the comma,
-                # then append comma and the rest (which is non-Japanese).
-                # This means the comma itself is treated as a non-Japanese char if not followed by Japanese.
-                # For simplicity now, if comma rule for Japanese extension doesn't apply,
-                # we process the potential_back_text by accumulating non-Japanese chars.
-                pass # Let the next block handle it by iterating
-
-        if not final_back_text: # If comma rule didn't set final_back_text
-            accumulated_chars = []
-            # Iterate through the potential_back_text (already stripped of leading whitespace by group 2 capture)
-            # or potential_back_text.lstrip() if group 2 could have leading space.
-            # Group 2's regex `\s*[^ \s...]` ensures first non-space is non-Japanese.
-            for char_code in potential_back_text: # Iterate over the original potential_back_text
-                if not re.match(jp_char_class, char_code):
-                    accumulated_chars.append(char_code)
-                else:
-                    # Stop at the first Japanese character if comma rule didn't apply
-                    break
-            final_back_text = "".join(accumulated_chars).strip()
-
-        if final_back_text: # Ensure the back is not empty after processing
-            return front_text, final_back_text, None
-        else:
-            # This case might happen if potential_back_text was, e.g., only Japanese chars after a comma
-            # that itself wasn't caught by the "comma followed by Japanese" rule, or if potential_back_text
-            # started with non-Japanese but then only had Japanese chars which were all stripped.
-            # Given the initial regex, group 2 must start with non-Jap, so final_back_text should not be empty
-            # unless potential_back_text itself was just spaces (but regex for group 2 prevents that).
-            # This path implies an issue or an edge case not fully covered.
-            # For safety, if final_back is empty, consider it unparseable.
-            return None, None, None
-
-    # If no pattern matches (neither Kanji nor new Vocab logic)
-    return None, None, None
+    # If not a Kanji card, try parsing as a vocabulary card.
+    return _parse_vocab_line(line)
 
 
 def parse_active_line(line):

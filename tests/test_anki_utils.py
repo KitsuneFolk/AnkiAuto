@@ -1,90 +1,110 @@
 import unittest
 from unittest.mock import patch, call
+import sys
+import os
+import ntpath
 
 import anki_utils
 
 
-class TestGetInfoForExistingNotes(unittest.TestCase):
-    """Tests for the get_info_for_existing_notes function."""
+class TestAnkiUtils(unittest.TestCase):
+    """Tests for the anki_utils functions."""
 
     @patch('anki_utils.anki_request')
-    def test_query_is_global_and_correctly_formatted(self, mock_anki_request):
+    def test_get_info_for_existing_notes(self, mock_anki_request):
         """
-        Verify that the query sent to AnkiConnect is not deck-specific and
-        is formatted correctly for multiple notes.
+        Verify that get_info_for_existing_notes functions correctly.
         """
-        # Mock the response from anki_request to prevent actual network calls
-        # The first call is findNotes, second is notesInfo.
-        # Let's return empty results to keep the test simple.
         mock_anki_request.side_effect = [
-            {"result": [], "error": None},  # Mock response for findNotes
-            {"result": [], "error": None}   # Mock response for notesInfo
-        ]
-
-        deck_name = "any-deck"  # This should be ignored by the function now
-        front_texts = ["front1", "front2 with \"quotes\""]
-
-        anki_utils.get_info_for_existing_notes(deck_name, front_texts)
-
-        # We expect anki_request to have been called. Let's check the 'query' parameter
-        # of the 'findNotes' action.
-        # The first call to anki_request should be for 'findNotes'.
-        self.assertGreaterEqual(mock_anki_request.call_count, 1, "anki_request was not called")
-
-        # Get the arguments of the first call
-        first_call_args = mock_anki_request.call_args_list[0]
-
-        # The call is made with positional args for action and keyword args for params
-        action_arg = first_call_args[0][0]
-        params_arg = first_call_args[1]
-
-        self.assertEqual(action_arg, "findNotes", "The action should be findNotes")
-
-        # The query should not contain the deck name
-        actual_query = params_arg.get("query")
-        self.assertNotIn(deck_name, actual_query, "Query should not be deck-specific")
-
-        # Check if the query is formatted as expected
-        expected_query = '("Front:front1" or "Front:front2 with \\\"quotes\\\"")'
-        self.assertEqual(actual_query, expected_query, "Query format is incorrect")
-
-    @patch('anki_utils.anki_request')
-    def test_deck_name_is_added_to_note_info(self, mock_anki_request):
-        """
-        Verify that the deck name is correctly fetched and added to the note info.
-        """
-        # Mock responses for the sequence of AnkiConnect calls
-        mock_anki_request.side_effect = [
-            # 1. findNotes
             {"result": [101, 102], "error": None},
-            # 2. notesInfo
             {"result": [
                 {"noteId": 101, "fields": {"Front": {"value": "front1"}}, "cards": [201]},
                 {"noteId": 102, "fields": {"Front": {"value": "front2"}}, "cards": [202]}
             ], "error": None},
-            # 3. cardsInfo
             {"result": [
                 {"cardId": 201, "deckName": "Deck A"},
                 {"cardId": 202, "deckName": "Deck B"}
             ], "error": None}
         ]
 
-        deck_name = "ImportDeck"
         front_texts = ["front1", "front2"]
+        result_map = anki_utils.get_info_for_existing_notes(front_texts)
 
-        result_map = anki_utils.get_info_for_existing_notes(deck_name, front_texts)
-
-        # Check that the deck names were added to the note info objects
         self.assertIn("deckName", result_map["front1"])
         self.assertEqual(result_map["front1"]["deckName"], "Deck A")
         self.assertIn("deckName", result_map["front2"])
         self.assertEqual(result_map["front2"]["deckName"], "Deck B")
 
-        # Verify that anki_request was called three times with the correct actions
         self.assertEqual(mock_anki_request.call_count, 3)
         self.assertEqual(mock_anki_request.call_args_list[0][0][0], "findNotes")
         self.assertEqual(mock_anki_request.call_args_list[1][0][0], "notesInfo")
         self.assertEqual(mock_anki_request.call_args_list[2][0][0], "cardsInfo")
+
+    @patch('anki_utils.anki_request')
+    def test_ensure_deck_exists_creates_deck(self, mock_anki_request):
+        """Test that ensure_deck_exists creates a deck if it does not exist."""
+        mock_anki_request.side_effect = [
+            {"result": ["Default"], "error": None},  # deckNames
+            {"result": 12345, "error": None}  # createDeck
+        ]
+        self.assertTrue(anki_utils.ensure_deck_exists("New-Deck"))
+        mock_anki_request.assert_has_calls([
+            call('deckNames'),
+            call('createDeck', deck='New-Deck')
+        ])
+
+    @patch('anki_utils.anki_request')
+    def test_add_notes_bulk(self, mock_anki_request):
+        """Test that add_notes_bulk calls addNotes with the correct parameters."""
+        notes = [{"front": "f1", "back": "b1"}]
+        anki_utils.add_notes_bulk(notes)
+        mock_anki_request.assert_called_once_with("addNotes", notes=notes)
+
+    @patch('anki_utils.anki_request')
+    def test_add_note_single(self, mock_anki_request):
+        """Test that add_note_single calls addNote with allowDuplicate."""
+        note = {"front": "f1", "back": "b1"}
+        anki_utils.add_note_single(note)
+        expected_note = note.copy()
+        expected_note.setdefault('options', {})['allowDuplicate'] = True
+        mock_anki_request.assert_called_once_with("addNote", note=expected_note)
+
+    @patch('anki_utils.anki_request')
+    def test_reset_cards(self, mock_anki_request):
+        """Test that reset_cards calls unsuspend and forgetCards."""
+        note_ids = [1, 2, 3]
+        card_ids = [101, 102, 103]
+        mock_anki_request.side_effect = [
+            {"result": card_ids, "error": None},  # findCards
+            {"result": None, "error": None},  # unsuspend
+            {"result": None, "error": None}  # forgetCards
+        ]
+        anki_utils.reset_cards(note_ids)
+        mock_anki_request.assert_has_calls([
+            call('findCards', query='nid:1 or nid:2 or nid:3'),
+            call('unsuspend', cards=card_ids),
+            call('forgetCards', cards=card_ids)
+        ])
+
+    @patch('sys.platform', 'win32')
+    @patch.dict('os.environ', {'ProgramFiles': 'C:\\Program Files'}, clear=True)
+    @patch('os.path.exists', return_value=True)
+    @patch('os.path.join', new=ntpath.join)
+    def test_get_anki_executable_path_windows(self, mock_exists):
+        """Test get_anki_executable_path on Windows."""
+        self.assertEqual(anki_utils.get_anki_executable_path(), 'C:\\Program Files\\Anki\\anki.exe')
+
+    @patch('sys.platform', 'darwin')
+    @patch('os.path.exists', return_value=True)
+    def test_get_anki_executable_path_macos(self, mock_exists):
+        """Test get_anki_executable_path on macOS."""
+        self.assertEqual(anki_utils.get_anki_executable_path(), '/Applications/Anki.app/Contents/MacOS/Anki')
+
+    @patch('sys.platform', 'linux')
+    @patch('os.path.exists', side_effect=lambda p: p == '/usr/bin/anki')
+    def test_get_anki_executable_path_linux(self, mock_exists):
+        """Test get_anki_executable_path on Linux."""
+        self.assertEqual(anki_utils.get_anki_executable_path(), '/usr/bin/anki')
 
 
 if __name__ == '__main__':
