@@ -1,3 +1,8 @@
+Make sure the commit message follows the best practices, such as:
+1. Use the Imperative Mood in the Subject Line
+2. Limit the Subject Line to 50 Characters
+3. Use the Body to Explain What and Why (Not How)
+
 The repository relies on using API of an Anki plugin that AI might not have the most recent knowledge of, for this reason the source code of AnkiConnect is attached below.
 
 __init__.py
