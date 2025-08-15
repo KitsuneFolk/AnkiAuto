@@ -171,7 +171,7 @@ def launch_anki():
             subprocess.Popen([anki_path])
             logger.info(f"Launched Anki from: {anki_path}")
             # Wait for Anki to start up
-            time.sleep(2)
+            time.sleep(5)
             return True
         except Exception as e:
             logger.error(f"Failed to launch Anki: {e}")
