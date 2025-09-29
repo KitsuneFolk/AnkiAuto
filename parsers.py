@@ -12,7 +12,7 @@ def parse_passive_line(line):
     3) ばらまきspending (money) recklessly -> Vocab card.
     Returns: (front, back, card_type_tag_suffix)
     """
-    line = line.strip()
+    line = line.replace('\u200b', '').strip()
     if not line:
         return None, None, None
 
@@ -113,7 +113,7 @@ def parse_active_line(line):
     2) Japanese phrase (English phrase)
     Returns: (front, back, card_type_tag_suffix)
     """
-    line = line.strip()
+    line = line.replace('\u200b', '').strip()
     if not line:
         return None, None, None
 
