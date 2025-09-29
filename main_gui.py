@@ -461,11 +461,11 @@ class ImportResultsWindow(Toplevel):
 
         if results.get('failed_cards'):
             self.create_simple_list_frame(scrollable_frame, "Failed to Add to Anki", results['failed_cards'],
-                                          lambda card: f"Line: {card.get('line', card.get('front'))}")
+                                          lambda card: f"{card.get('line', card.get('front'))}")
 
         if results.get('unparsable_lines'):
             self.create_simple_list_frame(scrollable_frame, "Unparsable Lines", results['unparsable_lines'],
-                                          lambda line: f"Line: {line.strip()}")
+                                          lambda line: f"{line.strip()}")
 
     def create_simple_list_frame(self, parent, title, items, formatter):
         frame = ttk.LabelFrame(parent, text=title, padding=10)
