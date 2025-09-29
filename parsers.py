@@ -6,9 +6,10 @@ import config
 def parse_passive_line(line):
     """
     Parses a line.
-    Handles two primary formats:
+    Handles three primary formats:
     1) (摯)... -> Kanji card with special tag.
-    2) ばらまきspending (money) recklessly -> Vocab card.
+    2) front　back -> separated by full-width space.
+    3) ばらまきspending (money) recklessly -> Vocab card.
     Returns: (front, back, card_type_tag_suffix)
     """
     line = line.strip()
@@ -21,6 +22,15 @@ def parse_passive_line(line):
         front = match_kanji_format.group(1).strip()
         back = match_kanji_format.group(2).strip()
         return front, back, config.PASSIVE_KANJI_TAG
+
+    # New format: front　back (full-width space)
+    if '　' in line:
+        parts = line.split('　', 1)
+        if len(parts) == 2:
+            front = parts[0].strip()
+            back = parts[1].strip()
+            if front and back:
+                return front, back, None
 
     # Vocabulary card parsing:
     # 1. Front part must be Japanese characters (including specified punctuation).
