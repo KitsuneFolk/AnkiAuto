@@ -225,6 +225,43 @@ class TestParsePassiveLine(unittest.TestCase):
         self.assertEqual(back, "This is it.")
         self.assertIsNone(tag)
 
+    def test_vocab_card_full_width_space_separator(self):
+        """Tests vocab cards using a full-width space separator."""
+        lines = {
+            "むそう　夢": ("むそう", "夢"),
+            "のびしろ　見込み": ("のびしろ", "見込み"),
+            "レパートリー　得意な範囲": ("レパートリー", "得意な範囲"),
+            "ふちん　浮くことと、沈むこと。": ("ふちん", "浮くことと、沈むこと。"),
+            "どっしり　大きくて重い": ("どっしり", "大きくて重い"),
+            "たっかん　哲学的見解": ("たっかん", "哲学的見解"),
+            "ファザコン　ファーザー・コンプレックス; 父が好きすぎる人": ("ファザコン", "ファーザー・コンプレックス; 父が好きすぎる人"),
+            "やけぐい　ストレスや心理的な負担から気を紛らわすために、空腹でなくても食べてしまう行動": ("やけぐい", "ストレスや心理的な負担から気を紛らわすために、空腹でなくても食べてしまう行動"),
+            "びんじょう　他人の乗り物に相乗りすること": ("びんじょう", "他人の乗り物に相乗りすること"),
+            "はんぱじゃない　すさまじい": ("はんぱじゃない", "すさまじい"),
+            "けいそう　顔つき": ("けいそう", "顔つき"),
+            "  leading and trailing spaces　should be stripped  ": ("leading and trailing spaces", "should be stripped"),
+        }
+        for line, (expected_front, expected_back) in lines.items():
+            with self.subTest(line=line):
+                front, back, tag = parse_passive_line(line)
+                self.assertEqual(front, expected_front)
+                self.assertEqual(back, expected_back)
+                self.assertIsNone(tag)
+
+    def test_vocab_card_full_width_space_separator_invalid(self):
+        """Tests invalid uses of full-width space separator."""
+        lines = [
+            "　empty front",
+            "empty back　",
+            "　",
+        ]
+        for line in lines:
+            with self.subTest(line=line):
+                front, back, tag = parse_passive_line(line)
+                self.assertIsNone(front)
+                self.assertIsNone(back)
+                self.assertIsNone(tag)
+
 
 class TestParseActiveLine(unittest.TestCase):
     """Tests for the parse_active_line function."""
