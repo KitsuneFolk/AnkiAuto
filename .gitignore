@@ -1,8 +1,1 @@
-.idea
-.release_builds
-/build
-/release_builds
-AnkiAutoApp.spec
-logs.txt
 __pycache__/
-AnkiAuto.spec

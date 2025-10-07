@@ -64,7 +64,11 @@ class AnkiImporterApp:
         self.active_pane.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 0), pady=10) # Added pady
         self.panes_by_deck_name[config.ACTIVE_DECK_NAME] = self.active_pane
 
+        self.status_bar = ttk.Label(root, text="Connected to Anki.", anchor=tk.W, padding=(5, 2))
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
         self.import_queue = queue.Queue()
+        anki_utils.set_gui_queue(self.import_queue)
         self.process_import_queue()
 
     def setup_dark_theme(self):
@@ -351,11 +355,24 @@ class AnkiImporterApp:
                 widget = msg.get("widget")
                 if widget and widget.winfo_exists():
                     widget.destroy()
-                return
+                return # Early return for this message type
 
+            elif msg["type"] == "connection_lost":
+                self.set_ui_connectivity_state(enabled=False)
+                self.status_bar.config(text="Connection to Anki lost. Trying to reconnect...")
+                return # Early return for this message type
+
+            elif msg["type"] == "connection_restored":
+                self.set_ui_connectivity_state(enabled=True)
+                self.status_bar.config(text="Connected to Anki.")
+                return # Early return for this message type
+
+            # Messages below this point are expected to be related to a specific import pane
             deck_name = msg.get("deck_name")
             if not deck_name or deck_name not in self.panes_by_deck_name:
-                logger.warning(f"Queue message has invalid/missing deck_name: {msg}")
+                # Log a warning if the message type requires a deck name but doesn't have one
+                if msg["type"] not in ["connection_lost", "connection_restored", "destroy_widget"]:
+                    logger.warning(f"Queue message has invalid/missing deck_name: {msg}")
                 return
 
             pane = self.panes_by_deck_name[deck_name]
@@ -395,6 +412,16 @@ class AnkiImporterApp:
         if pane.winfo_exists():
             pane.progress_label.config(text="")
             pane.progress_bar["value"] = 0
+
+    def set_ui_connectivity_state(self, enabled):
+        """
+        Enables or disables UI components based on Anki connection status.
+        Only affects text widgets, not the import buttons.
+        """
+        for pane in self.panes_by_deck_name.values():
+            if pane.winfo_exists():
+                state = tk.NORMAL if enabled else tk.DISABLED
+                pane.text_widget.config(state=state)
 
 
 class ImportResultsWindow(Toplevel):
@@ -583,26 +610,29 @@ if __name__ == "__main__":
     logger_setup.setup_logging()
 
     try:
-        if anki_utils.anki_request('version') is None:
-            logger.info("Could not connect to AnkiConnect. Trying to launch Anki...")
-            if anki_utils.launch_anki():
-                if anki_utils.anki_request('version') is None:
-                    logger.critical("Failed to connect to AnkiConnect after launching.")
-                    messagebox.showerror("Anki Connection Error",
-                                         "Anki was started, but could not connect.\nPlease check if the AnkiConnect add-on is installed and enabled.")
-                else:
-                    logger.info("Successfully connected to AnkiConnect after launching.")
-                    root = tk.Tk()
-                    app = AnkiImporterApp(root)
-                    root.mainloop()
-            else:
-                messagebox.showerror("Anki Connection Error",
-                                     "Could not connect to Anki and failed to launch it.\nPlease ensure Anki is installed and start it manually.")
-        else:
+        # Try to connect with retries. This gives the user a chance to start Anki.
+        if anki_utils.try_connect_to_anki():
             logger.info("Successfully connected to AnkiConnect.")
             root = tk.Tk()
             app = AnkiImporterApp(root)
             root.mainloop()
+        else:
+            # If connection fails after retries, try to launch Anki automatically.
+            logger.info("Could not connect to AnkiConnect. Trying to launch Anki...")
+            if anki_utils.launch_anki():
+                # After launching, try connecting again with retries.
+                if anki_utils.try_connect_to_anki():
+                    logger.info("Successfully connected to AnkiConnect after launching.")
+                    root = tk.Tk()
+                    app = AnkiImporterApp(root)
+                    root.mainloop()
+                else:
+                    logger.critical("Failed to connect to AnkiConnect after launching.")
+                    messagebox.showerror("Anki Connection Error",
+                                         "Anki was started, but could not connect.\nPlease check if the AnkiConnect add-on is installed and enabled.")
+            else:
+                messagebox.showerror("Anki Connection Error",
+                                     "Could not connect to Anki and failed to launch it.\nPlease ensure Anki is installed and start it manually.")
     except Exception as e:
         logger.critical("A fatal error occurred during application initialization.", exc_info=True)
         messagebox.showerror("Fatal Error",

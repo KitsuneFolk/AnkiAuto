@@ -1,5 +1,9 @@
 import json
 import logging
+import os
+import subprocess
+import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -8,19 +12,72 @@ import config
 # Get a logger for this module
 logger = logging.getLogger(__name__)
 
+# --- State for connection handling ---
+_anki_is_connected = True
+_gui_queue = None
 
-def anki_request(action, **params):
-    """Helper function to send requests to AnkiConnect."""
+
+def set_gui_queue(q):
+    """Sets the queue for communicating with the GUI."""
+    global _gui_queue
+    _gui_queue = q
+
+
+def _notify_connection_lost():
+    """Notifies the GUI that the connection was lost."""
+    global _anki_is_connected
+    if _anki_is_connected:
+        _anki_is_connected = False
+        logger.error("Connection to AnkiConnect lost. Will attempt to reconnect...")
+        if _gui_queue:
+            _gui_queue.put({"type": "connection_lost"})
+
+
+def _notify_connection_restored():
+    """Notifies the GUI that the connection was restored."""
+    global _anki_is_connected
+    if not _anki_is_connected:
+        _anki_is_connected = True
+        logger.info("Connection to AnkiConnect has been restored.")
+        if _gui_queue:
+            _gui_queue.put({"type": "connection_restored"})
+
+
+def anki_request(action, block_on_fail=True, **params):
+    """
+    Helper function to send requests to AnkiConnect.
+    If block_on_fail is True, it handles connection loss by blocking and retrying.
+    """
     payload = {"action": action, "params": params, "version": 6}
-    try:
-        response = urllib.request.urlopen(
-            urllib.request.Request(config.ANKI_CONNECT_URL, json.dumps(payload).encode('utf-8'))
-        )
-        return json.load(response)
-    except urllib.error.URLError as e:
-        logger.error(f"Error connecting to AnkiConnect: {e}")
-        logger.error("Please ensure Anki is running and AnkiConnect is installed.")
-        return None
+    while True:
+        try:
+            response = urllib.request.urlopen(
+                urllib.request.Request(config.ANKI_CONNECT_URL, json.dumps(payload).encode('utf-8'))
+            )
+            _notify_connection_restored()
+            return json.load(response)
+        except urllib.error.URLError as e:
+            if not block_on_fail:
+                return None
+
+            _notify_connection_lost()
+            time.sleep(5)
+
+
+def try_connect_to_anki(retries=3, delay=5):
+    """
+    Tries to connect to AnkiConnect, retrying on failure.
+    Returns True on success, False otherwise.
+    """
+    for i in range(retries):
+        logger.info(f"Attempting to connect to Anki... (Attempt {i + 1}/{retries})")
+        if anki_request('version', block_on_fail=False) is not None:
+            logger.info("Successfully connected to AnkiConnect.")
+            return True
+        if i < retries - 1:
+            logger.info(f"Connection failed. Retrying in {delay} seconds...")
+            time.sleep(delay)
+    return False
 
 
 def ensure_deck_exists(deck_name):
@@ -140,12 +197,6 @@ def reset_cards(note_ids):
     anki_request("unsuspend", cards=card_ids)
 
     return anki_request("forgetCards", cards=card_ids)
-
-
-import os
-import subprocess
-import sys
-import time
 
 
 def get_anki_executable_path():
