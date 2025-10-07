@@ -145,7 +145,6 @@ def reset_cards(note_ids):
 import os
 import subprocess
 import sys
-import time
 
 
 def get_anki_executable_path():
@@ -170,8 +169,6 @@ def launch_anki():
         try:
             subprocess.Popen([anki_path])
             logger.info(f"Launched Anki from: {anki_path}")
-            # Wait for Anki to start up
-            time.sleep(8)
             return True
         except Exception as e:
             logger.error(f"Failed to launch Anki: {e}")
